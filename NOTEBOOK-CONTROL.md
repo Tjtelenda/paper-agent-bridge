@@ -99,6 +99,10 @@ PDF and DRM-free EPUB delivery uses `document_delivery.py`; it creates imported
 library documents and works through cloud sync. User-confirmed lasso/page captures
 can be processed visually and stored in Obsidian; scheduled local transcription
 and reviewed organization are documented in [RAW-VAULT.md](RAW-VAULT.md).
+An existing native `<document-UUID>.thumbnails/<page-UUID>.png` may provide a
+read-only cached preview through authorized maintenance SSH. Check source identity
+and freshness; low resolution can leave writing unreadable. This does not require
+a new on-device viewport or prove full-resolution rendering.
 Whole-vault handwriting search, arbitrary modern notebook rendering, recursive
 folder deletion and raw notebook-file rewriting are not provided.
 

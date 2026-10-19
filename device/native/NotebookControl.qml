@@ -55,24 +55,30 @@ QtObject {
     function savedItem(item) {
         if(item.deleted)return endpoint.itemFilesAbsent(item.id);
         if(!item.id)return false;
-        var state=endpoint.savedState(item.id),meta=state.metadata;
+        var state=JSON.parse(JSON.stringify(endpoint.savedState(item.id))),meta=state.metadata;
         if(!meta)return false;
         if(meta.visibleName!==item.name)return false;
         if((Boolean(meta.deleted)||String(meta.parent)==="trash")!==Boolean(item.trashed))return false;
         if(!item.trashed&&String(meta.parent)!==String(item.parent_id))return false;
         if(item.pages) {
             if(!state.content||state.content.pageCount!==item.pages.length)return false;
-            var pages=((state.content.cPages||{}).pages||[]).filter(function(p){return !(p.deleted&&p.deleted.value);});
-            pages.sort(function(a,b){var x=String((a.idx||{}).value||''),y=String((b.idx||{}).value||'');return x<y?-1:x>y?1:0;});
-            if(JSON.stringify(pages.map(function(p){return p.id;}))!==JSON.stringify(item.pages))return false;
-            if(item.templates&&JSON.stringify(pages.map(function(p){return p.template?p.template.value:"";}))!==JSON.stringify(item.templates))return false;
-            if(pending.operation==='create_notebook') {
-                if(state.content.orientation!==(pending.args.landscape?'landscape':'portrait')||state.content.coverPageNumber!==0)return false;
-                if(pages.length!==1||pages[0].template.value!==(pending.args.template||'Blank'))return false;
-            }
-            if(pending.operation==='append_page') {
-                var added=pages.filter(function(p){return pending.args.expected.pages.indexOf(p.id)<0;});
-                if(added.length!==1||added[0].template.value!==pending.args.template)return false;
+            var hasModernPages=!!state.content.cPages&&Array.isArray(state.content.cPages.pages);
+            var modernPages=hasModernPages?state.content.cPages.pages.filter(function(p){return !(p.deleted&&p.deleted.value);}):[];
+            if(hasModernPages) {
+                modernPages.sort(function(a,b){var x=String((a.idx||{}).value||''),y=String((b.idx||{}).value||'');return x<y?-1:x>y?1:0;});
+                if(JSON.stringify(modernPages.map(function(p){return p.id;}))!==JSON.stringify(item.pages))return false;
+                if(item.templates&&JSON.stringify(modernPages.map(function(p){return p.template?p.template.value:"";}))!==JSON.stringify(item.templates))return false;
+                if(pending.operation==='create_notebook') {
+                    if(state.content.orientation!==(pending.args.landscape?'landscape':'portrait')||state.content.coverPageNumber!==0)return false;
+                    if(modernPages.length!==1||modernPages[0].template.value!==(pending.args.template||'Blank'))return false;
+                }
+                if(pending.operation==='append_page') {
+                    var added=modernPages.filter(function(p){return pending.args.expected.pages.indexOf(p.id)<0;});
+                    if(added.length!==1||added[0].template.value!==pending.args.template)return false;
+                }
+            } else {
+                if(['create_notebook','append_page','set_template'].indexOf(pending.operation)>=0)return false;
+                if(!Array.isArray(state.content.pages)||JSON.stringify(state.content.pages)!==JSON.stringify(item.pages))return false;
             }
         }
         item.saved_metadata_sha256=state.metadata_sha256;

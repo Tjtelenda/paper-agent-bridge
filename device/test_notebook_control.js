@@ -14,3 +14,10 @@ console.log('Native create/append/template allowlist, stale-state guards, Trash/
 // Native-copy requests must leave source identity/order intact and discover one new document.
 c.lc.cloneEntry=(id,parent)=>doc('copied-doc','Disposable copy').id;
 const copied=m.prepare(c,'copy_item',{id:'doc-1',expected:deleted,parent_id:'root'}).poll();assert.equal(copied.id,'copied-doc');assert.deepEqual(Array.from(entries['doc-1'].pages),['page-1']);
+
+// Execute the real persisted-state verifier against an original-format imported PDF.
+const qml=fs.readFileSync(__dirname+'/native/NotebookControl.qml','utf8');const verify={pending:{operation:'trash'},endpoint:{savedState:()=>({metadata:{visibleName:'PDF',parent:'trash'},content:{pageCount:1,pages:['original-page']},metadata_sha256:'x'})}};
+vm.createContext(verify);vm.runInContext(qml.slice(qml.indexOf('    function savedItem('),qml.indexOf('    function check()')),verify);
+assert.equal(verify.savedItem({id:'pdf',name:'PDF',trashed:true,pages:['original-page'],templates:['Blank']}),true);
+assert.equal(verify.savedItem({id:'pdf',name:'PDF',trashed:true,pages:['wrong-page']}),false);
+verify.pending.operation='append_page';assert.equal(verify.savedItem({id:'pdf',name:'PDF',trashed:true,pages:['original-page']}),false);
