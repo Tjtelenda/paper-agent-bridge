@@ -93,8 +93,9 @@ See [document delivery](DOCUMENT-DELIVERY.md) for the explicit server/agent CLI.
 It targets an existing folder in the normal cloud library, independently of the
 agent inbox and home network. It requires your own paired compatible cloud client.
 Synthetic PDF and EPUB uploads, cloud read-back and byte-for-byte tablet file
-sync passed on one 3.29.0.153 device. Visual opening and a different-Wi-Fi test
-remain pending; qualify your own account/device before relying on delivery.
+sync passed on one 3.29.0.153 device, and the user confirmed both files open
+normally. A different-Wi-Fi test remains pending; qualify your own account/device
+before relying on delivery.
 
 ## Build and device recovery
 

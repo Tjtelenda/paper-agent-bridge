@@ -16,8 +16,8 @@ The original upstream is archived. Cloud protocol/schema changes can break
 third-party clients independently of tablet firmware. Compatibility with a
 particular account or firmware must be checked using the steps below. One
 3.29.0.153 tablet has passed synthetic PDF and EPUB uploads, cloud metadata
-read-back, and byte-for-byte physical-tablet file verification. Visual opening
-and a different-Wi-Fi field test are still pending. This is not an official reMarkable API integration.
+read-back, and byte-for-byte physical-tablet file verification. The user also
+confirmed both files open normally. A different-Wi-Fi field test is still pending. This is not an official reMarkable API integration.
 
 ## Prepare and verify
 
