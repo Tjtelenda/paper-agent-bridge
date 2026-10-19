@@ -29,7 +29,7 @@ MAX_COMMENT = 4000
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{16,80}")
 SOURCE_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,160}")
 DESTINATIONS = ("muse", "codex", "obsidian", "hermes")
-STAGES = ("parsed", "stored", "organized_recorded")
+STAGES = ("raw_stored", "parsed", "stored", "organized_recorded")
 STAGE_STATES = ("pending", "in_progress", "needs_review", "completed", "failed")
 
 
@@ -510,7 +510,17 @@ class Bridge:
     def _stage_evidence(self, stage, state, evidence):
         if not isinstance(evidence, dict):
             raise InvalidPayload("evidence must be an object")
-        if state == "completed" and stage == "parsed":
+        if state == "completed" and stage == "raw_stored":
+            required = ("note_path", "image_sha256", "writer_revision", "readback_verified")
+            if (not exact_keys(evidence, required) or not valid_vault_path(evidence["note_path"])
+                    or not evidence["note_path"].startswith("00-inbox/remarkable-")
+                    or not isinstance(evidence["image_sha256"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", evidence["image_sha256"])
+                    or not isinstance(evidence["writer_revision"], str)
+                    or not re.fullmatch(r"[0-9a-f]{40,64}", evidence["writer_revision"])
+                    or evidence["readback_verified"] is not True):
+                raise InvalidPayload("raw storage requires a verified image and committed inbox note")
+        elif state == "completed" and stage == "parsed":
             if not exact_keys(evidence, ("summary",)) or not valid_text(evidence["summary"], 4000):
                 raise InvalidPayload("completed parsed stage requires a summary")
         elif state == "completed" and stage in ("stored", "organized_recorded"):
@@ -567,7 +577,8 @@ class Bridge:
         if not exact_keys(payload, ("event_id", "request_id", "actor", "stage", "state", "evidence")):
             return 400, {"error": "invalid stage receipt"}
         event_id, request_id, stage, state = (payload[key] for key in ("event_id", "request_id", "stage", "state"))
-        if (not valid_id(event_id) or not valid_id(request_id) or payload["actor"] != "hermes"
+        expected_actor = "obsidian" if stage == "raw_stored" else "hermes"
+        if (not valid_id(event_id) or not valid_id(request_id) or payload["actor"] != expected_actor
                 or stage not in STAGES or state not in STAGE_STATES):
             return 400, {"error": "invalid stage receipt fields"}
         try:

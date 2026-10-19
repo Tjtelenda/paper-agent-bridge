@@ -1,19 +1,20 @@
 {
   "audience": "public",
   "files": {
-    ".github/workflows/checks.yml": "b1a549aec6f851adf21603c96604fe0717caa1cc2f49dd2d6bf87427c3f5eac2",
+    ".github/workflows/checks.yml": "2b1ae5c12a93d97488fd09eee67ffe58a60ce02fc3b4704690c70bbd059a5835",
     ".gitignore": "4e08b6249c25ea853d6709ef0cc339fb1bf8cfa52d8e58661172af74036f1a43",
-    "BACKEND-CAPABILITIES.md": "86e935cda99ffee66f0c5fc460fc5f3e158a41bb9cf031f0c2dad673700ff175",
+    "BACKEND-CAPABILITIES.md": "f83ad4b5f5b160096702d353cf23851c19c2e53cdad9a568e2cca7743cccb16c",
     "CONTRIBUTING.md": "f00dd8717bcdffbd1801b8f12504e382508185f971487364d9176c1f7a0a6103",
     "DOCUMENT-DELIVERY.md": "9a739b494311dda44051e6628f7950be1865fb4c768439d404dd9ab5316fecad",
     "LICENSE": "5139790c33a49742b594455095103349209a97f1a143a30431da2538a132eb11",
-    "README.md": "02fdba493450f270b93f882619bcc3975213aca84b7284370ba00e88756310aa",
+    "RAW-VAULT.md": "142442a9c79370a370eb6a6fbfa21d3c7d25adb6baf04ff08b7adcd62e82f0cb",
+    "README.md": "8b3edaad4408cb80ec804e95fe0a94534e02875a4e7e036f6da7523eb8dea0a8",
     "SECURITY.md": "d42627ac46a395fa84d37c16899ceac3103a15056528f5f36420cee5e8ffc161",
     "agent_handler.py": "887963a83b7c112485f1da7648d8967691fde568ffd8daf6ace135e9ebe77d8e",
-    "bridge.py": "c8349fc8192a0db8ccbe94f246153f604835189a564638724e82ad1c83a3c926",
+    "bridge.py": "247e3f7cf29bec9a01d3ef494f8fa30dae36bae893fb42f2432f8a1eb3247a4b",
     "deploy/remarkable-agent-bridge.service": "80453220c77c216de0ace751e5740636726459d9cc7e806d173f27122efceb13",
     "device/Main.qml": "8a2379021d5a7dbac79c942430c4cd5dcab2697f39b3f958e426b030b163c18a",
-    "device/Model.js": "0a96a3c45bc3bb16c9f3edcd2396c9acb7518962244131d45cfee705d259bc77",
+    "device/Model.js": "5a3b2d23ea887d46ecd8c1d399bde6fa8e95cec7c93abb0600e9c343b6d7cc7c",
     "device/backend.cpp": "84861a57c2663e1bb5faa5cc61ff961af26ffee5a74177f895a634f087cbb651",
     "device/build.sh": "14c9ea4ea6eee68b11c23f0bded7546a0d7436d24d7247a830307f27945dc1b1",
     "device/build_native_overlay.py": "1d6bf30b982b90a453fe9ce11642a11ca0646a1a17657498df296d2ad84dbcee",
@@ -39,7 +40,9 @@
     "test_agent_handler.py": "dd6d4650f5977559c65257190da3582784d6975e82017fbbb14569ef0a05393d",
     "test_bridge.py": "780db179fcb04c60374a4fd4054d879f0170fdd934f0abb60325ec917cc5ee66",
     "test_document_delivery.py": "c930bd04c7e899f019dbe27e7203ac09e957297a537f84a50ea05f50b6c8756b",
-    "test_muse_adapter.py": "f66393fe8627ce6edbe72ef1a159fe4184d4ad0cf35d7c19085dd9f1bfa09f02"
+    "test_muse_adapter.py": "f66393fe8627ce6edbe72ef1a159fe4184d4ad0cf35d7c19085dd9f1bfa09f02",
+    "test_vault_intake.py": "efdf3353292edb5d8466d79123b0816cb5f9bf8abca478dbf995aff66bd421e1",
+    "vault_intake.py": "fb05963a18f4a9b6bb3352500745dea1edfa934bff280ef1d5804966743a58b5"
   },
   "version": 1
 }

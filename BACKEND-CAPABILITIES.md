@@ -17,7 +17,7 @@ workflow. No folders or notebook content were changed during this capability che
 | Add pages to a native notebook | Stock DocumentController.addPageWithTemplateAndPageSize exists. No qualified agent command or live append test is implemented. |
 | Insert typed text / images into existing notebook content | Stock scene/clipboard operations exist. A device command adapter must validate notebook/page identity, save state and read back the result. Not implemented or tested for agent writes. |
 | Generate briefs, worksheets or reference packs as new documents | Can generate a PDF/EPUB and use the proven delivery helper. Existing handwritten pages are not modified. |
-| Store raw handwriting images in a vault | Obsidian supports images embedded in Markdown. OCR is not needed for storage. The current guarded writer accepts Markdown only, so attachment intake still needs implementation. |
+| Store raw handwriting images in a vault | Obsidian supports images embedded in Markdown. OCR is not needed for storage. A narrow transactional writer now stores an immutable image plus a pending Markdown note; its ordinary Markdown-only path guard remains intact. See [raw vault intake](RAW-VAULT.md) for deployment and processing limits. |
 | Organize handwritten sends in a vault | Capture queue exists; scheduled image intake and the qualified writer remain disconnected. Queued is not stored or organized. |
 
 ## How an agent reaches it

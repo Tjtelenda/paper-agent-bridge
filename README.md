@@ -21,7 +21,7 @@ been exercised on one Paper Pro Move firmware build; UI refinements still requir
 manual device acceptance. Whole-notebook sending, reliable full-page capture,
 handwriting recognition, source navigation, suspend/resume and end-to-end agent
 round trips are not qualified. Inbox polling does not wake a sleeping tablet.
-Obsidian dispatch deliberately fails closed pending a qualified local-only writer.
+Raw-image vault intake has a separate trusted storage hook; see [image-first vault intake](RAW-VAULT.md). Automated final organization remains review-gated. The general agent adapter still refuses Obsidian dispatch because it cannot enforce local-only execution.
 
 ## Relay and adapters
 

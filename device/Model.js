@@ -268,7 +268,7 @@ function inboxEvents(state) {
 function summary(e) {
     if(e.kind==='agent_reply')return e.message.actor+': '+e.message.text;
     if(e.kind==='stage_update') {
-        var names={parsed:'Read and understood',stored:'Saved to Obsidian',organized_recorded:'Organized in Obsidian'};
+        var names={raw_stored:'Original image saved to Obsidian',parsed:'Read and understood',stored:'Saved to Obsidian',organized_recorded:'Organized in Obsidian'};
         var states={pending:'waiting',in_progress:'in progress',completed:'complete',needs_review:'needs your review',failed:'could not complete'};
         var evidence=e.evidence||{}, parts=[(names[e.stage]||e.stage)+': '+(states[e.state]||e.state)];
         if(evidence.summary)parts.push(evidence.summary);
