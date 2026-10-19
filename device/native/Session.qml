@@ -11,6 +11,19 @@ QtObject {
         panel.client.pane = "inbox";
         console.log("GOODBOT_INBOX_OPENED");
     }
+    function openSend() {
+        if (!panel) return;
+        panel.showPopup();
+        var client = panel.client;
+        if (!client.loaded) {
+            client.notice = "Still loading saved drafts. Try Send to agent again in a moment.";
+        } else if (client.hasActiveDraft) {
+            client.resumeDraft();
+        } else {
+            client.pane = "inbox";
+            client.notice = "To send handwriting, close this panel, lasso it, then tap Send to agent in the selection menu. Whole-page sending is not available yet.";
+        }
+    }
     function capture(image, notebook, page, title, label, rect, bounds) {
         if (!panel) return;
         panel.showPopup();

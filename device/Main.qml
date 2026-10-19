@@ -3,8 +3,10 @@ import QtQuick.Controls 2.5
 import QtQuick.Layouts 1.12
 import ark.controls as ArkControls
 import ark.tokens as ArkTokens
+import device.ui.controls as DeviceControls
 import GoodBot.Bridge 1.0 as GoodBot
 import xofm.libs.epaper as Epaper
+import xofm.libs.dialogs as Dialogs
 import "Model.js" as Model
 
 Control {
@@ -45,6 +47,7 @@ Control {
     property int chatCount: 0
     property string previewRequestId: ""
     property var confirmSource: null
+    readonly property int activeTabIndex: pane === "outbox" ? 2 : (pane === "chats" || pane === "thread" || (pane === "compose" && directChat) ? 1 : 0)
     readonly property bool hasActiveDraft: capture !== null || replyTo !== null || directChat || threadDraftId.length > 0
     readonly property int keyboardInset: pane==="compose"||pane==="thread" ? Math.max(0,Qt.inputMethod.keyboardRectangle.height) : 0
     readonly property bool convertedAvailable: !replyTo&&!directChat&&capture&&typeof capture.converted_text==="string"&&capture.converted_text.trim().length>0
@@ -62,7 +65,7 @@ Control {
         var data=JSON.stringify(state);
         if(unescape(encodeURIComponent(data)).length>24*1024*1024){
             notice="Local storage limit reached; export state before adding captures";
-            if(closeAfterSave){closeAfterSave=false;unsavedClose.open();}
+            if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             return;
         }
         saving=true;dirty=false;send(1,data);
@@ -176,7 +179,7 @@ Control {
             wanted=true;dismissKeyboard();refreshViews();persist();notice="Saving reply to Outbox…";
         } catch(e){notice=String(e);}
     }
-    function openSource(source) {if(!source)return;confirmSource=source;openConfirm.open();}
+    function openSource(source) {if(!source)return;dismissKeyboard();confirmSource=source;openConfirm.visible=true;}
     function retryOutbox(id) {
         var item=outboxItem(id),next=Model.nextItem(state);
         if(!loaded||saving||dirty||syncing||!item||item.status==="needs_review"||!next||next.id!==id){
@@ -246,11 +249,11 @@ Control {
                 if(sendFailed){syncing=true;send(5,String(state.cursor));}
             } else if(type===11) {
                 saving=false;dirty=true;notice=body;
-                if(closeAfterSave){closeAfterSave=false;unsavedClose.open();}
+                if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             } else if(type===12) {
                 if(saving)dirty=true;saving=false;syncing=false;activeItemId="";
                 notice="Agent service is unavailable. Your current draft and Outbox remain open.";
-                if(closeAfterSave){closeAfterSave=false;unsavedClose.open();}
+                if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             }
             refreshViews();
         }catch(e){restoring=false;syncing=false;saving=false;notice=String(e);}
@@ -263,18 +266,23 @@ Control {
     Component.onCompleted: send(0,"")
     Timer {id:draftSave;interval:400;onTriggered:persist()}
     Timer { interval:30000;running:loaded&&panelVisible;repeat:true;onTriggered:refresh() }
+    onActiveTabIndexChanged: tabs.currentIndex = activeTabIndex
     Rectangle { anchors.fill:parent;color:"white" }
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
         spacing: 12
 
-        RowLayout {
+        ArkControls.NavigationBar {
             Layout.fillWidth: true
-            Label { text: "Agent"; font.pixelSize: 28; Layout.fillWidth: true }
-            ArkControls.Button { text: "Hide keyboard"; type: ArkTokens.Button.tertiary; enabled: root.keyboardInset > 0; onClicked: dismissKeyboard() }
-            ArkControls.Button { text: "Refresh"; type: ArkTokens.Button.tertiary; enabled: loaded && !syncing; onClicked: refresh() }
-            ArkControls.Button {
+            type: ArkTokens.NavigationBar.secondary
+            title: "Agent"
+            borderPosition: ArkControls.NavigationBar.Border.Bottom
+
+            Item { Layout.fillWidth: true }
+            ArkControls.NavigationBar.Button { text: "Hide keyboard"; enabled: root.keyboardInset > 0; onClicked: dismissKeyboard() }
+            ArkControls.NavigationBar.Button { text: "Refresh"; enabled: loaded && !syncing; onClicked: refresh() }
+            ArkControls.NavigationBar.Button {
                 text: "Close"; type: ArkTokens.Button.tertiary; enabled: !saving
                 onClicked: {
                     if (!loaded) { root.close(); return; }
@@ -284,35 +292,27 @@ Control {
             }
         }
 
-        Label { text: notice; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 18 }
+        ArkControls.Body { text: notice; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
 
-        Item {
-            id: tabBar
+        DeviceControls.TabControl {
+            id: tabs
             Layout.fillWidth: true
-            Layout.preferredHeight: 58
-            property int currentIndex: pane === "outbox" ? 2 : (pane === "chats" || pane === "thread" || (pane === "compose" && directChat) ? 1 : 0)
-            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 2; color: "black" }
-            Row {
-                anchors.fill: parent
-                Repeater {
-                    model: ["Inbox", "Chats" + (chatCount ? " (" + chatCount + ")" : ""), "Outbox" + (outboxCount ? " (" + outboxCount + ")" : "")]
-                    delegate: Item {
-                        width: tabBar.width / 3; height: tabBar.height
-                        Label { anchors.fill: parent; anchors.bottomMargin: 5; text: modelData; color: "black"; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 6; color: index === tabBar.currentIndex ? "black" : "white" }
-                        MouseArea { anchors.fill: parent; onClicked: root.activateTab(index) }
-                    }
-                }
+            model: ["Inbox", "Chats" + (chatCount ? " (" + chatCount + ")" : ""), "Outbox" + (outboxCount ? " (" + outboxCount + ")" : "")]
+            currentIndex: root.activeTabIndex
+            onCurrentIndexChanged: {
+                if (currentIndex === root.activeTabIndex) return;
+                root.activateTab(currentIndex);
+                currentIndex = root.activeTabIndex;
             }
         }
 
-        Label { visible: pane === "inbox"; text: "Updates and receipts"; font.pixelSize: 22 }
-        Label { visible: pane === "inbox" && eventList.count === 0; text: "Inbox is empty"; font.pixelSize: 20 }
+        ArkControls.Title { visible: pane === "inbox"; text: "Updates and receipts"; type: ArkControls.Title.Medium }
+        ArkControls.Body { visible: pane === "inbox" && eventList.count === 0; text: "Inbox is empty" }
         ListView {
             id: eventList; visible: pane === "inbox"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 10; model: []
             delegate: Rectangle {
                 width: eventList.width; height: eventLabel.implicitHeight + 32; color: "white"; border.color: "#888888"
-                Label { id: eventLabel; anchors.fill: parent; anchors.margins: 16; text: Model.summary(modelData); wrapMode: Text.Wrap; font.pixelSize: 20 }
+                ArkControls.Body { id: eventLabel; anchors.fill: parent; anchors.margins: 16; text: Model.summary(modelData); wrapMode: Text.Wrap }
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -330,11 +330,11 @@ Control {
                 anchors.fill: parent; spacing: 10
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "Conversations"; font.pixelSize: 22; Layout.fillWidth: true }
+                    ArkControls.Title { text: "Conversations"; type: ArkControls.Title.Medium; Layout.fillWidth: true }
                     ArkControls.Button { text: "Resume draft"; type: ArkTokens.Button.tertiary; visible: root.hasActiveDraft; onClicked: resumeDraft() }
                     ArkControls.Button { text: "New chat"; type: ArkTokens.Button.secondary; enabled: loaded && !saving && !root.hasActiveDraft; onClicked: beginChat() }
                 }
-                Label { visible: chatList.count === 0; text: "No conversations yet"; font.pixelSize: 20 }
+                ArkControls.Body { visible: chatList.count === 0; text: "No conversations yet" }
                 ListView {
                     id: chatList; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 10; model: []
                     delegate: Rectangle {
@@ -343,11 +343,11 @@ Control {
                             id: chatRow; anchors.fill: parent; anchors.margins: 15; spacing: 4
                             RowLayout {
                                 Layout.fillWidth: true
-                                Label { text: String(modelData.destination || "Agent").replace(/^./, function(c){ return c.toUpperCase(); }); font.pixelSize: 22; Layout.fillWidth: true }
-                                Label { visible: modelData.pending; text: "Queued"; font.pixelSize: 17 }
+                                ArkControls.Label { text: String(modelData.destination || "Agent").replace(/^./, function(c){ return c.toUpperCase(); }); type: ArkControls.Label.LargeStrong; Layout.fillWidth: true }
+                                ArkControls.Label { visible: modelData.pending; text: "Queued"; type: ArkControls.Label.SmallSubtle }
                             }
-                            Label { text: modelData.preview; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 19 }
-                            Label { text: modelData.turns + (modelData.turns === 1 ? " turn" : " turns"); font.pixelSize: 16 }
+                            ArkControls.Body { text: modelData.preview; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Caption { text: modelData.turns + (modelData.turns === 1 ? " turn" : " turns") }
                         }
                         MouseArea { anchors.fill: parent; onClicked: root.openThread(modelData.request_id) }
                     }
@@ -362,7 +362,7 @@ Control {
                 RowLayout {
                     Layout.fillWidth: true
                     ArkControls.Button { text: "Back"; type: ArkTokens.Button.tertiary; onClicked: { if (draft()) { dismissKeyboard(); pane = "chats"; } } }
-                    Label { text: (threadInfo(selectedThreadId) || {}).destination || "Conversation"; font.pixelSize: 23; Layout.fillWidth: true }
+                    ArkControls.Title { text: (threadInfo(selectedThreadId) || {}).destination || "Conversation"; type: ArkControls.Title.Medium; Layout.fillWidth: true }
                 }
                 ListView {
                     id: threadList; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 8; model: []
@@ -377,10 +377,10 @@ Control {
                                 id: turnBody; anchors.fill: parent; anchors.margins: 14; spacing: 5
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: modelData.actor; font.bold: true; font.pixelSize: 18; Layout.fillWidth: true }
-                                    Label { visible: !!modelData.status; text: modelData.status; font.pixelSize: 16 }
+                                    ArkControls.Label { text: modelData.actor; type: ArkControls.Label.SmallStrong; Layout.fillWidth: true }
+                                    ArkControls.Caption { visible: !!modelData.status; text: modelData.status }
                                 }
-                                Label { text: modelData.text; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 20 }
+                                ArkControls.Body { text: modelData.text; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                 Image {
                                     visible: turn.shownImage.length > 0; source: turn.shownImage; Layout.fillWidth: true; Layout.preferredHeight: visible ? 180 : 0; fillMode: Image.PreserveAspectFit
                                     MouseArea { anchors.fill: parent; enabled: !!modelData.source; onClicked: root.openSource(modelData.source) }
@@ -390,7 +390,7 @@ Control {
                         }
                     }
                 }
-                Label { visible: threadBlocked; text: "A message is queued in Outbox. Send another after it is accepted."; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 17 }
+                ArkControls.Body { visible: threadBlocked; text: "A message is queued in Outbox. Send another after it is accepted."; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 RowLayout {
                     Layout.fillWidth: true
                     TextArea {
@@ -403,14 +403,14 @@ Control {
             }
         }
 
-        Label { visible: pane === "outbox" && !selectedOutbox && outboxCount === 0; text: "Outbox is empty"; font.pixelSize: 22 }
+        ArkControls.Body { visible: pane === "outbox" && !selectedOutbox && outboxCount === 0; text: "Outbox is empty" }
         ListView {
             id: outboxList; visible: pane === "outbox" && !selectedOutbox; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 10; model: []
             delegate: Rectangle {
                 width: outboxList.width; height: outboxRow.implicitHeight + 32; color: "white"; border.color: "#888888"
                 ColumnLayout { id: outboxRow; anchors.fill: parent; anchors.margins: 16
-                    Label { text: root.outboxStatus(modelData) + " · " + root.outboxDestination(modelData); font.pixelSize: 22; Layout.fillWidth: true }
-                    Label { text: "Stable ID: " + modelData.id; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 17 }
+                    ArkControls.Label { text: root.outboxStatus(modelData) + " · " + root.outboxDestination(modelData); type: ArkControls.Label.LargeStrong; Layout.fillWidth: true }
+                    ArkControls.Caption { text: "Stable ID: " + modelData.id; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 }
                 MouseArea { anchors.fill: parent; onClicked: { root.selectedOutboxId = modelData.id; root.selectedOutbox = root.outboxItem(modelData.id); } }
             }
@@ -424,20 +424,20 @@ Control {
                     id: composeScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     ColumnLayout {
                         width: composeScroll.availableWidth; spacing: 14
-                        Label { text: directChat ? "Start an agent conversation" : replyTo ? "Confirm threaded reply" : "Confirm original selection"; font.pixelSize: 24 }
+                        ArkControls.Title { text: directChat ? "Start an agent conversation" : replyTo ? "Confirm threaded reply" : "Confirm original selection"; type: ArkControls.Title.Medium }
                         Image { visible: !directChat && (!!capture || sourcePreview.length > 0); source: capture && capture.image ? Model.imageUrl(capture.image) : sourcePreview; Layout.fillWidth: true; Layout.preferredHeight: 240; fillMode: Image.PreserveAspectFit }
-                        Label { text: capture ? Model.sourceLabel(capture.source) : ""; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                        ComboBox { id: destination; visible: !replyTo; model: directChat ? ["Hermes", "Muse", "Codex"] : ["Hermes", "Muse", "Codex", "Obsidian"]; enabled: !replyTo; onActivated: draft() }
-                        Label { visible: root.convertedAvailable; text: "Converted text from this capture"; font.pixelSize: 20 }
+                        ArkControls.Body { text: capture ? Model.sourceLabel(capture.source) : ""; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Dropdown { id: destination; visible: !replyTo; model: directChat ? ["Hermes", "Muse", "Codex"] : ["Hermes", "Muse", "Codex", "Obsidian"]; enabled: !replyTo; onActivated: draft() }
+                        ArkControls.Label { visible: root.convertedAvailable; text: "Converted text from this capture"; type: ArkControls.Label.LargeStrong }
                         TextArea { id: converted; visible: root.convertedAvailable; placeholderText: "Review converted text"; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.preferredHeight: 150; onTextChanged: if (loaded) draft() }
-                        Label { visible: !replyTo && !directChat && !root.convertedAvailable; text: "Text conversion is unavailable for this selection. The original image can still be sent."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Body { visible: !replyTo && !directChat && !root.convertedAvailable; text: "Text conversion is unavailable for this selection. The original image can still be sent."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         TextArea {
                             id: comment; text: root.messageText; placeholderText: directChat ? "Type your message" : replyTo ? "Type your reply" : "Optional typed comment"; wrapMode: Text.Wrap
                             Layout.fillWidth: true; Layout.preferredHeight: 150
                             onTextChanged: { if (root.messageText !== text) root.messageText = text; if (loaded && !restoring) draft(); }
                         }
-                        Label { visible: !directChat; text: replyTo ? "Or draw your reply below" : "Or draw a comment below" }
-                        Label { visible: unrestoredInk.length > 0; text: "The saved drawing could not be displayed, but it is still retained in this draft. Clear it explicitly before sending."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Label { visible: !directChat; text: replyTo ? "Or draw your reply below" : "Or draw a comment below"; type: ArkControls.Label.Medium }
+                        ArkControls.Body { visible: unrestoredInk.length > 0; text: "The saved drawing could not be displayed, but it is still retained in this draft. Clear it explicitly before sending."; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         Item {
                             id: inkFrame; visible: !directChat; Layout.fillWidth: true; Layout.preferredHeight: 220
                             Rectangle { anchors.fill: parent; color: "white"; border.color: "#888888" }
@@ -460,12 +460,12 @@ Control {
             ColumnLayout { anchors.fill: parent; spacing: 12
                 ScrollView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     ColumnLayout { width: parent.width; spacing: 12
-                        Label { text: selectedOutbox ? root.outboxStatus(selectedOutbox) + " · " + root.outboxDestination(selectedOutbox) : ""; font.pixelSize: 24; Layout.fillWidth: true }
-                        Label { text: selectedOutbox ? "Stable ID: " + selectedOutbox.id : ""; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 18 }
-                        Label { visible: selectedOutbox && !!selectedOutbox.reason; text: "Last error: " + (selectedOutbox ? selectedOutbox.reason : ""); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Title { text: selectedOutbox ? root.outboxStatus(selectedOutbox) + " · " + root.outboxDestination(selectedOutbox) : ""; type: ArkControls.Title.Medium; Layout.fillWidth: true }
+                        ArkControls.Caption { text: selectedOutbox ? "Stable ID: " + selectedOutbox.id : ""; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Body { visible: selectedOutbox && !!selectedOutbox.reason; text: "Last error: " + (selectedOutbox ? selectedOutbox.reason : ""); type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         TextArea { visible: selectedOutbox && root.outboxText(selectedOutbox).length > 0; text: selectedOutbox ? root.outboxText(selectedOutbox) : ""; readOnly: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.preferredHeight: 180 }
                         Image { visible: selectedOutbox && root.outboxImage(selectedOutbox).length > 0; source: selectedOutbox ? root.outboxImage(selectedOutbox) : ""; Layout.fillWidth: true; Layout.preferredHeight: 260; fillMode: Image.PreserveAspectFit }
-                        Label { visible: selectedOutbox && root.outboxCommentText(selectedOutbox).length > 0; text: "Comment"; font.pixelSize: 20 }
+                        ArkControls.Label { visible: selectedOutbox && root.outboxCommentText(selectedOutbox).length > 0; text: "Comment"; type: ArkControls.Label.LargeStrong }
                         TextArea { visible: selectedOutbox && root.outboxCommentText(selectedOutbox).length > 0; text: selectedOutbox ? root.outboxCommentText(selectedOutbox) : ""; readOnly: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.preferredHeight: 140 }
                         Image { visible: selectedOutbox && root.outboxCommentImage(selectedOutbox).length > 0; source: selectedOutbox ? root.outboxCommentImage(selectedOutbox) : ""; Layout.fillWidth: true; Layout.preferredHeight: 220; fillMode: Image.PreserveAspectFit }
                     }
@@ -486,20 +486,32 @@ Control {
                     source: selected && root.state.captures[selected.request_id || (selected.message || {}).request_id] && root.state.captures[selected.request_id || (selected.message || {}).request_id].image ? Model.imageUrl(root.state.captures[selected.request_id || (selected.message || {}).request_id].image) : sourcePreview
                     MouseArea { anchors.fill: parent; onClicked: root.openSource(root.sourceFor(selected)) }
                 }
-                Label { text: selected ? Model.summary(selected) : ""; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 22 }
+                ArkControls.Body { text: selected ? Model.summary(selected) : ""; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 ArkControls.Button { visible: !!sourceFor(selected); text: "Open exact source…"; type: ArkTokens.Button.secondary; onClicked: root.openSource(root.sourceFor(selected)) }
                 ArkControls.Button { text: "Back to Inbox"; type: ArkTokens.Button.tertiary; onClicked: pane = "inbox" }
             }
         }
     }
-    Dialog {
-        id: openConfirm; title: "Open the current source page?"; modal: true; standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text: Model.sourceLabel(root.confirmSource) + "\nThe page may have changed since this capture."; wrapMode: Text.Wrap; width: Math.min(root.width - 100, 500) }
-        onAccepted: root.sourceOpenRequested(root.confirmSource)
+    Dialogs.ConfirmChangeDialog {
+        id: openConfirm
+        visible: false
+        anchors.fill: parent
+        title: "Open the current source page?"
+        description: Model.sourceLabel(root.confirmSource) + "\nThe page may have changed since this capture."
+        confirmButtonText: "Open"
+        rejectButtonText: "Cancel"
+        onAccepted: { visible = false; root.sourceOpenRequested(root.confirmSource); }
+        onRejected: visible = false
     }
-    Dialog {
-        id: unsavedClose; title: "Close with an unsaved draft?"; modal: true; standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text: "Saving failed. Closing keeps the draft in memory while the notebook app stays open. Restarting may lose these changes."; wrapMode: Text.Wrap; width: Math.min(root.width - 100, 500) }
-        onAccepted: root.close()
+    Dialogs.ConfirmChangeDialog {
+        id: unsavedClose
+        visible: false
+        anchors.fill: parent
+        title: "Close with an unsaved draft?"
+        description: "Saving failed. Closing keeps the draft in memory while the notebook app stays open. Restarting may lose these changes."
+        confirmButtonText: "Close"
+        rejectButtonText: "Keep open"
+        onAccepted: { visible = false; root.close(); }
+        onRejected: visible = false
     }
 }

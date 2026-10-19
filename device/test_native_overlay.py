@@ -39,6 +39,25 @@ Item {
         self.assertNotIn("clearSelectedItems", patched)
         self.assertNotIn("convertSelection", patched)
 
+    def test_share_actions_reuse_stock_foldout_rows(self):
+        original = '''import QtQuick
+Item {
+    hasExtraContent: root.nestedLayout && root.hasIntegrations
+    component ShareBy: ColumnLayout {
+        spacing: 0
+        SendByEmailButton {
+        }
+    }
+}
+'''
+        patched = patch_resource("/qt/qml/xofm/libs/toolbar/qml/ShareMenu.qml", original)
+        self.assertIn('label: "Send to agent"', patched)
+        self.assertIn('label: "Agent inbox"', patched)
+        self.assertIn('type: ToolbarTool.Type.FoldoutButton', patched)
+        self.assertIn('GoodBot.Session.openSend()', patched)
+        self.assertIn('GoodBot.Session.openInbox()', patched)
+        self.assertIn('hasExtraContent: root.nestedLayout && root.hasIntegrations', patched)
+
 
 if __name__ == "__main__":
     unittest.main()

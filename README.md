@@ -8,6 +8,12 @@ The relay accepts explicit page/crop submissions and source-free text conversati
 It preserves source images and request identities, separates device and agent-reply
 credentials, and provides an inbox that can recover after restart. The tablet UI
 includes compose, inbox, outbox, threaded replies and optional ink comments.
+The next overlay uses the stock Share menu for Send to agent and Agent inbox,
+with native foldout rows and no floating notebook shortcut. Without an existing
+capture, Send to agent explains the working lasso route; it does not capture a
+whole page. Native menu placement still requires on-device acceptance.
+The panel reuses native navigation, tabs, dropdown, typography and confirmation
+controls; multiline text and chat history retain custom layouts.
 
 Host tests do not establish compatibility with your tablet. Selection capture has
 been exercised on one Paper Pro Move firmware build; UI refinements still require

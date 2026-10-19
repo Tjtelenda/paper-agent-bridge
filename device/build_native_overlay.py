@@ -86,6 +86,33 @@ def patch_resource(name, text):
                     root.document.visibleName, String(root.page + 1), rect, bounds);
             }
 ''')
+    elif name.endswith("/ShareMenu.qml"):
+        marker = "        SendByEmailButton {\n"
+        text = replace_once(text, marker, '''        ToolbarTool {
+            objectName: "goodbotSendToAgent"
+            toolbar: root.toolbar
+            type: ToolbarTool.Type.FoldoutButton
+            label: "Send to agent"
+            iconSource: "qrc:/ark/icons/send"
+            Layout.fillWidth: true
+            onClicked: {
+                root.toolbar.closeFoldout();
+                GoodBot.Session.openSend();
+            }
+        }
+        ToolbarTool {
+            objectName: "goodbotAgentInbox"
+            toolbar: root.toolbar
+            type: ToolbarTool.Type.FoldoutButton
+            label: "Agent inbox"
+            iconSource: "qrc:/qml/images/inbox.svg"
+            Layout.fillWidth: true
+            onClicked: {
+                root.toolbar.closeFoldout();
+                GoodBot.Session.openInbox();
+            }
+        }
+''' + marker)
     elif name.endswith("/DocumentView.qml"):
         text = replace_once(text, "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible",
                             "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible\n                                 || root.goodbotPanelActive")
@@ -100,18 +127,6 @@ def patch_resource(name, text):
         marker = "    property SceneController sceneController: sceneView.controller\n"
         text = replace_once(text, marker, marker + '''
     readonly property bool goodbotPanelActive: !!GoodBot.Session.panel && GoodBot.Session.panel.active
-    ArkControls.IconButton {
-        objectName: "goodbotNotebookInbox"
-        iconSource: "qrc:/qml/images/inbox.svg"
-        type: ArkTokens.IconButton.primary
-        buttonSize: ArkControls.IconButton.Size.Large
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: 24
-        z: 100
-        visible: root.documentLoaded
-        onClicked: GoodBot.Session.openInbox()
-    }
 ''')
     else:
         raise ValueError("Unsupported firmware resource")
@@ -124,6 +139,7 @@ RESOURCES = (
     "qml/common/SceneSelectionHandler.qml",
     "qml/device/view/documentview/DeviceSceneView.qml",
     "qml/device/view/documentview/DocumentView.qml",
+    "qt/qml/xofm/libs/toolbar/qml/ShareMenu.qml",
 )
 
 

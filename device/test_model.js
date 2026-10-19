@@ -93,6 +93,10 @@ const sourceCtx={state:m.fresh()};vm.createContext(sourceCtx);
 vm.runInContext(qml.slice(qml.indexOf('    function sourceFor('),qml.indexOf('    function submit(')),sourceCtx);
 assert.equal(sourceCtx.sourceFor({request_id:'chat',source:null}),null);
 assert.equal(sourceCtx.sourceFor({request_id:'note',source:{page_id:'page'}}).page_id,'page');
+let sourceKeyboardDismissed=0;
+const openSourceCtx={confirmSource:null,openConfirm:{visible:false},dismissKeyboard:()=>sourceKeyboardDismissed++};vm.createContext(openSourceCtx);
+vm.runInContext(qml.slice(qml.indexOf('    function openSource('),qml.indexOf('    function retryOutbox(')),openSourceCtx);
+openSourceCtx.openSource({page_id:'page'});assert.equal(sourceKeyboardDismissed,1);assert.equal(openSourceCtx.openConfirm.visible,true);
 console.log('Source-free conversation queue, restart, actual QML submit and absent-source navigation passed');
 
 const encoded={image:capture.image,sha256:'a'.repeat(64)};
@@ -112,7 +116,8 @@ assert.throws(()=>m.selectionCapture({...encoded,sha256:'bad'},'book','page','',
 console.log('Native selection identity, image preservation, scene geometry and off-page rejection passed');
 
 let closePrompt=0;
-ctx.closeAfterSave=true;ctx.saving=true;ctx.syncing=true;ctx.activeItemId="";ctx.unsavedClose={open:()=>closePrompt++};
+ctx.closeAfterSave=true;ctx.saving=true;ctx.syncing=true;ctx.activeItemId="";ctx.unsavedClose={};
+Object.defineProperty(ctx.unsavedClose,'visible',{set:value=>{if(value)closePrompt++;}});
 const retained=JSON.stringify(ctx.state);
 ctx.receive(9,'config must be owned by you, mode 600');
 assert.equal(closePrompt,0);assert.equal(ctx.closeAfterSave,true);assert.equal(ctx.saving,true);
@@ -181,8 +186,9 @@ assert.equal(inkCtx.draft(),true);assert.equal(inkCtx.state.draft.ink,legacyInk)
 inkCtx.submit(false);assert.equal(inkCtx.state.outbox.length,0);assert(inkCtx.notice.includes('Clear it explicitly'));
 
 let sizePrompt=0;
+const sizeClosePrompt={};Object.defineProperty(sizeClosePrompt,'visible',{set:value=>{if(value)sizePrompt++;}});
 const sizeCtx={loaded:true,dirty:false,saving:false,closeAfterSave:true,
-    state:{text:'x'.repeat(24*1024*1024)},notice:'',unsavedClose:{open:()=>sizePrompt++},send:()=>assert.fail('oversize state must not send')};
+    state:{text:'x'.repeat(24*1024*1024)},notice:'',unsavedClose:sizeClosePrompt,send:()=>assert.fail('oversize state must not send')};
 vm.createContext(sizeCtx);
 vm.runInContext(qml.slice(qml.indexOf('    function persist('),qml.indexOf('    function sync(')),sizeCtx);
 sizeCtx.persist();assert.equal(sizePrompt,1);assert.equal(sizeCtx.closeAfterSave,false);assert.equal(sizeCtx.dirty,true);
@@ -264,3 +270,17 @@ const reversed=m.fresh();reversed.events=[
 ];
 assert.deepEqual(m.threadMessages(reversed,'chain').map(turn=>turn.message_id),['chain-a','chain-b','chain-c','chain-d','chain-e']);
 console.log('Receipt races honor causal parents across mixed precision and clock skew, keep pending badges, and preserve legacy/cyclic fallback order');
+
+const sessionQml=fs.readFileSync(__dirname+'/native/Session.qml','utf8');
+let panelOpens=0,resumes=0;
+const shareClient={loaded:false,hasActiveDraft:false,pane:'chats',notice:'',resumeDraft:()=>resumes++};
+const shareContext={panel:{client:shareClient,showPopup:()=>panelOpens++}};
+vm.createContext(shareContext);
+vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function openSend('),sessionQml.indexOf('    function capture(')),shareContext);
+shareContext.openSend();assert(shareClient.notice.includes('Still loading'));assert.equal(resumes,0);
+shareClient.loaded=true;shareClient.hasActiveDraft=true;
+shareContext.openSend();assert.equal(resumes,1);
+shareClient.hasActiveDraft=false;
+shareContext.openSend();assert.equal(shareClient.pane,'inbox');assert.equal(resumes,1);
+assert(shareClient.notice.includes('Whole-page sending is not available'));assert.equal(panelOpens,3);
+console.log('Native Share send preserves loading/draft state and explains unsupported page capture');
