@@ -24,6 +24,21 @@ QtObject {
             client.notice = "To send handwriting, close this panel, lasso it, then tap Send to agent in the selection menu. Whole-page sending is not available yet.";
         }
     }
+    function openVault() {
+        if (!panel) return;
+        panel.showPopup();
+        var client = panel.client;
+        if (!client.loaded) {
+            client.notice = "Still loading saved drafts. Try Send to vault again in a moment.";
+        } else if (client.capture && !client.replyTo && !client.directChat) {
+            client.submit(false, "obsidian");
+        } else if (client.hasActiveDraft) {
+            client.notice = "Only a lassoed selection can be sent to the vault. Finish or send the current draft first.";
+        } else {
+            client.pane = "inbox";
+            client.notice = "Capture a lassoed selection with Send to agent first, then use Send to vault. Whole-page sending is not available yet.";
+        }
+    }
     function capture(image, notebook, page, title, label, rect, bounds) {
         if (!panel) return;
         panel.showPopup();

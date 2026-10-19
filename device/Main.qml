@@ -116,6 +116,7 @@ Control {
     function outboxStatus(item) {
         if(!item)return "";
         if(item.status==="needs_review")return "Needs review";
+        if(item.payload&&item.payload.destination==="obsidian")return "Queued; vault processing not connected";
         return syncing&&activeItemId===item.id?"Sending; awaiting receipt":"Queued";
     }
     function outboxText(item) {
@@ -194,16 +195,18 @@ Control {
             return "Agent delivery is not connected yet. Messages are saved in Outbox.";
         return text;
     }
-    function submit(asText) {
+    function submit(asText, destinationOverride) {
         try {
             var image="";
+            var vaultHandoff=destinationOverride==="obsidian";
             if(unrestoredInk)throw Error("The saved drawing could not be restored. Clear it explicitly before sending.");
             if(ink.hasInk){image=ink.dataUrl();if(!image)throw Error(ink.error||"Drawing could not be saved");}
             if(image&&messageText.trim()){notice="Choose typed OR drawn comment; clear one before sending";return;}
             if(directChat)Model.queueConversation(state,destination.currentText.toLowerCase(),messageText);
             else if(replyTo)Model.queueReply(state,replyTo,messageText,image);
-            else Model.queue(state,capture,destination.currentText.toLowerCase(),asText?converted.text:null,messageText,image);
-            capture=null;replyTo=null;directChat=false;unrestoredInk="";state.draft=null;setMessageText("");pane="chats";wanted=true;dismissKeyboard();refreshViews();persist();notice="Saving outbox…";
+            else Model.queue(state,capture,destinationOverride||destination.currentText.toLowerCase(),asText?converted.text:null,messageText,image);
+            capture=null;replyTo=null;directChat=false;unrestoredInk="";state.draft=null;setMessageText("");pane=vaultHandoff?"outbox":"chats";wanted=true;dismissKeyboard();refreshViews();
+            notice=vaultHandoff?"Saving to Outbox; scheduled vault handoff is not connected yet.":"Saving outbox…";persist();
         } catch(e){notice=String(e);}
     }
     function receive(type, body) {

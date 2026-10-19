@@ -101,18 +101,67 @@ def patch_resource(name, text):
             }
         }
         ToolbarTool {
-            objectName: "goodbotAgentInbox"
+            objectName: "goodbotSendToVault"
             toolbar: root.toolbar
+            type: ToolbarTool.Type.FoldoutButton
+            label: "Send to vault"
+            iconSource: "qrc:/ark/icons/archive"
+            Layout.fillWidth: true
+            onClicked: {
+                root.toolbar.closeFoldout();
+                GoodBot.Session.openVault();
+            }
+        }
+''' + marker)
+    elif name.endswith("/SettingsMenu.qml"):
+        marker = "    Component {\n        id: settingsComponent\n"
+        text = replace_once(text, marker, '''    component SettingsToolRow: ColumnLayout {
+        id: row
+
+        required property var model
+        required property int buttonType
+        required property Item toolbar
+        property alias active: settingsToolLoader.active
+        property alias asynchronous: settingsToolLoader.asynchronous
+        property alias foldoutPosition: settingsToolLoader.foldoutPosition
+        readonly property alias shown: settingsToolLoader.shown
+        readonly property alias item: settingsToolLoader.item
+
+        signal select(var tool)
+
+        spacing: 0
+        Layout.fillHeight: false
+
+        ToolLoader {
+            id: settingsToolLoader
+            model: row.model
+            buttonType: row.buttonType
+            toolbar: row.toolbar
+            antialiasing: row.antialiasing
+            Layout.fillWidth: true
+            onSelect: (tool) => row.select(tool)
+        }
+
+        ToolbarTool {
+            objectName: "goodbotAgentInbox"
+            toolbar: row.toolbar
             type: ToolbarTool.Type.FoldoutButton
             label: "Agent inbox"
             iconSource: "qrc:/qml/images/inbox.svg"
             Layout.fillWidth: true
+            visible: settingsToolLoader.visible && settingsToolLoader.item?.objectName === "shareMenu"
             onClicked: {
-                root.toolbar.closeFoldout();
+                row.toolbar.closeFoldout();
                 GoodBot.Session.openInbox();
             }
         }
+    }
+
 ''' + marker)
+        loader = "delegate: ToolLoader {"
+        if text.count(loader) != 5:
+            raise ValueError("Settings menu tool delegates are missing or ambiguous")
+        text = text.replace(loader, "delegate: SettingsToolRow {")
     elif name.endswith("/DocumentView.qml"):
         text = replace_once(text, "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible",
                             "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible\n                                 || root.goodbotPanelActive")
@@ -140,6 +189,7 @@ RESOURCES = (
     "qml/device/view/documentview/DeviceSceneView.qml",
     "qml/device/view/documentview/DocumentView.qml",
     "qt/qml/xofm/libs/toolbar/qml/ShareMenu.qml",
+    "qt/qml/xofm/libs/toolbar/qml/SettingsMenu.qml",
 )
 
 

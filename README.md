@@ -147,3 +147,12 @@ sh -n send.sh device/build.sh
 
 These checks use synthetic inputs and mock agent services; they do not prove live
 agent delivery, device pen quality, handwriting recognition or firmware compatibility.
+
+## Native menu shortcuts
+
+The staged revision uses native rows inside Share for Send to agent and Send to vault. Agent inbox sits
+immediately below Share in the parent three-dot menu; there is no floating document
+button. Sending requires an existing lasso capture; whole-page capture is not yet
+available. Send to vault retains a raw capture for the Obsidian destination, but
+the downstream scheduled handoff remains blocked pending a qualified image intake
+path. Queued does not mean stored or organized.
