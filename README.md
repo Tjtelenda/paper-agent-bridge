@@ -8,10 +8,11 @@ The relay accepts explicit page/crop submissions and source-free text conversati
 It preserves source images and request identities, separates device and agent-reply
 credentials, and provides an inbox that can recover after restart. The tablet UI
 includes compose, inbox, outbox, threaded replies and optional ink comments.
-The next overlay uses the stock Share menu for Send to agent and Agent inbox,
-with native foldout rows and no floating notebook shortcut. Without an existing
-capture, Send to agent explains the working lasso route; it does not capture a
-whole page. Native menu placement still requires on-device acceptance.
+The overlay uses stock Share rows for Send to agent and Send to vault, with Agent
+inbox directly below Share in the parent menu and no floating notebook shortcut.
+Share preserves an existing draft, otherwise captures the active lasso or renders
+the full current page. Whole-page rendering is implemented; pixel acceptance on
+the test device remains pending.
 The panel reuses native navigation, tabs, dropdown, typography and confirmation
 controls; multiline text and chat history retain custom layouts.
 
@@ -150,9 +151,11 @@ agent delivery, device pen quality, handwriting recognition or firmware compatib
 
 ## Native menu shortcuts
 
-The staged revision uses native rows inside Share for Send to agent and Send to vault. Agent inbox sits
+The current revision uses native rows inside Share for Send to agent and Send to vault. Agent inbox sits
 immediately below Share in the parent three-dot menu; there is no floating document
-button. Sending requires an existing lasso capture; whole-page capture is not yet
-available. Send to vault retains a raw capture for the Obsidian destination, but
+button. Share resumes an existing draft, captures an active lasso, or renders the
+full current page in a separate native viewport. Both sources use the same review
+and send controls. Full-page rendering is implemented and installed on the test
+device; pixel accuracy and long-page coverage still need manual acceptance. Send to vault retains a raw capture for the Obsidian destination, but
 the downstream scheduled handoff remains blocked pending a qualified image intake
 path. Queued does not mean stored or organized.

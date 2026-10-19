@@ -33,6 +33,25 @@ function selectionCapture(encoded, notebook, page, title, label, rect, bounds) {
         revision:'render-sha256:'+encoded.sha256,selection:'crop',
         crop:{x:x,y:y,width:right-x,height:bottom-y},captured_by:'remarkable',captured_at:new Date().toISOString()}};
 }
+function pageLayout(paper, content) {
+    function valid(r) { return r && ['x','y','width','height'].every(function(k){return typeof r[k]==='number'&&isFinite(r[k]);})&&r.width>0&&r.height>0; }
+    if(!valid(paper))throw Error('Full-page bounds are unavailable');
+    if(content&&content.width===0&&content.height===0)content=paper;
+    if(!valid(content))throw Error('Full-page content bounds are unavailable');
+    var x=Math.min(paper.x,content.x),y=Math.min(paper.y,content.y);
+    var width=Math.max(paper.x+paper.width,content.x+content.width)-x;
+    var height=Math.max(paper.y+paper.height,content.y+content.height)-y;
+    var scale=Math.min(1,2048/width,8192/height,Math.sqrt(16*1024*1024/(width*height)));
+    if(!isFinite(scale)||scale<=0||width*scale<256||height*scale<256)
+        throw Error('This page is too long or narrow for a readable image; send a selection instead');
+    return {bounds:{x:x,y:y,width:width,height:height},width:Math.ceil(width*scale),height:Math.ceil(height*scale),scale:scale};
+}
+function pageCapture(encoded, notebook, page, title, label) {
+    var bounds={x:0,y:0,width:1,height:1};
+    var capture=selectionCapture(encoded,notebook,page,title,label,bounds,bounds);
+    capture.source.selection='page';delete capture.source.crop;
+    return capture;
+}
 function checkImage(image, maximum) {
     if(!image||['image/png','image/jpeg'].indexOf(image.media_type)<0||typeof image.data_base64!=='string')throw Error('PNG or JPEG required');
     var data=image.data_base64.replace(/\s/g,'');

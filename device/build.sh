@@ -19,6 +19,6 @@ if [ "${1:-}" = '--package' ]; then
     cmake --build "$BUILD_DIR/native" --parallel 2
     mkdir -p "$BUILD_DIR/qml/GoodBot/Bridge"
     cp "$BUILD_DIR/native/GoodBot/Bridge/libgoodbotbridgeplugin.so" native/qmldir \
-        native/Session.qml native/Panel.qml "$BUILD_DIR/qml/GoodBot/Bridge/"
+        native/Session.qml native/Panel.qml native/PageCapture.qml "$BUILD_DIR/qml/GoodBot/Bridge/"
 fi
 printf 'Build output: %s\n' "$BUILD_DIR"

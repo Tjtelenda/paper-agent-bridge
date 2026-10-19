@@ -79,6 +79,31 @@ def patch_resource(name, text):
 
 ''' + marker)
     elif name.endswith("/DeviceSceneView.qml"):
+        text = replace_once(text, "    id: root\n", '''    id: root
+    Component { id: goodbotPageRenderer; GoodBot.PageCapture {} }
+    function goodbotCapturePage(complete, fail) {
+        if (!root.document || !root.controller || !root.sceneView || root.isLoading)
+            throw Error("Wait for the current page to finish loading");
+        const notebook = root.document.id.toString(), page = root.pageId;
+        const title = root.document.visibleName, label = String(root.page + 1);
+        if (root.selectionHandler && root.selectionHandler.visible) {
+            const selection = root.selectionHandler;
+            if (selection.working) throw Error("Wait for the selected writing to finish rendering");
+            complete(selection.selectionPreview().image.image(), notebook, page, title, label,
+                selection.sceneSelectionRect, root.controller.primaryContentRect);
+            return;
+        }
+        const renderer = goodbotPageRenderer.createObject(root, {
+            document: root.document, pageId: page,
+            layout: GoodBot.Session.pageLayout(root.controller.primaryContentRect, root.controller.extendedContentRect),
+            renderProfile: root.sceneView.colorProfile
+        });
+        if (!renderer) throw Error("The native page renderer could not be created");
+        renderer.completed.connect(function(image) { complete(image, notebook, page, title, label); renderer.destroy(); });
+        renderer.failed.connect(function(reason) { fail(reason); renderer.destroy(); });
+        renderer.start();
+    }
+''')
         marker = "            id: selectionHandler\n"
         text = replace_once(text, marker, marker + '''            onGoodbotSelectionRequested: (image, rect, bounds) => {
                 if (!root.document) return;
@@ -97,7 +122,7 @@ def patch_resource(name, text):
             Layout.fillWidth: true
             onClicked: {
                 root.toolbar.closeFoldout();
-                GoodBot.Session.openSend();
+                GoodBot.Session.openSend(root.toolbar.goodbotPageProvider);
             }
         }
         ToolbarTool {
@@ -109,7 +134,7 @@ def patch_resource(name, text):
             Layout.fillWidth: true
             onClicked: {
                 root.toolbar.closeFoldout();
-                GoodBot.Session.openVault();
+                GoodBot.Session.openVault(root.toolbar.goodbotPageProvider);
             }
         }
 ''' + marker)
@@ -163,6 +188,7 @@ def patch_resource(name, text):
             raise ValueError("Settings menu tool delegates are missing or ambiguous")
         text = text.replace(loader, "delegate: SettingsToolRow {")
     elif name.endswith("/DocumentView.qml"):
+        text = replace_once(text, "            id: toolbar\n", "            id: toolbar\n            readonly property var goodbotPageProvider: sceneView\n")
         text = replace_once(text, "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible",
                             "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible\n                                 || root.goodbotPanelActive")
         text = replace_once(text, "readonly property bool shortcutsEnabled: visible && !adjustViewPopup.active",

@@ -2,3 +2,4 @@ module GoodBot.Bridge
 plugin goodbotbridgeplugin
 singleton Session 1.0 Session.qml
 Panel 1.0 Panel.qml
+PageCapture 1.0 PageCapture.qml

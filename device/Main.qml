@@ -11,6 +11,7 @@ import "Model.js" as Model
 
 Control {
     id: root
+    enabled: !GoodBot.Session.capturingPage
     font.family: "reMarkableSans"
     font.pixelSize: 24
     property alias nativeEndpoint: endpoint
@@ -427,7 +428,7 @@ Control {
                     id: composeScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     ColumnLayout {
                         width: composeScroll.availableWidth; spacing: 14
-                        ArkControls.Title { text: directChat ? "Start an agent conversation" : replyTo ? "Confirm threaded reply" : "Confirm original selection"; type: ArkControls.Title.Medium }
+                        ArkControls.Title { text: directChat ? "Start an agent conversation" : replyTo ? "Confirm threaded reply" : capture && capture.source.selection === "page" ? "Confirm captured page" : "Confirm original selection"; type: ArkControls.Title.Medium }
                         Image { visible: !directChat && (!!capture || sourcePreview.length > 0); source: capture && capture.image ? Model.imageUrl(capture.image) : sourcePreview; Layout.fillWidth: true; Layout.preferredHeight: 240; fillMode: Image.PreserveAspectFit }
                         ArkControls.Body { text: capture ? Model.sourceLabel(capture.source) : ""; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         ArkControls.Dropdown { id: destination; visible: !replyTo; model: directChat ? ["Hermes", "Muse", "Codex"] : ["Hermes", "Muse", "Codex", "Obsidian"]; enabled: !replyTo; onActivated: draft() }
