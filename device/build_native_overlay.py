@@ -153,54 +153,25 @@ def patch_resource(name, text):
         }
 ''' + marker)
     elif name.endswith("/SettingsMenu.qml"):
-        marker = "    Component {\n        id: settingsComponent\n"
-        text = replace_once(text, marker, '''    component SettingsToolRow: ColumnLayout {
-        id: row
-
-        required property var model
-        required property int buttonType
-        required property Item toolbar
-        property alias active: settingsToolLoader.active
-        property alias asynchronous: settingsToolLoader.asynchronous
-        property alias foldoutPosition: settingsToolLoader.foldoutPosition
-        readonly property alias shown: settingsToolLoader.shown
-        readonly property alias item: settingsToolLoader.item
-
-        signal select(var tool)
-
-        spacing: 0
-        Layout.fillHeight: false
-
-        ToolLoader {
-            id: settingsToolLoader
-            model: row.model
-            buttonType: row.buttonType
-            toolbar: row.toolbar
-            antialiasing: row.antialiasing
-            Layout.fillWidth: true
-            onSelect: (tool) => row.select(tool)
-        }
-
-        ToolbarTool {
-            objectName: "goodbotAgentInbox"
-            toolbar: row.toolbar
-            type: ToolbarTool.Type.FoldoutButton
-            label: "Agent inbox"
-            iconSource: "qrc:/qml/images/inbox.svg"
-            Layout.fillWidth: true
-            visible: settingsToolLoader.visible && settingsToolLoader.item?.objectName === "shareMenu"
-            onClicked: {
-                row.toolbar.closeFoldout();
-                GoodBot.Session.openInbox();
+        marker = '''            Repeater {
+                model: ToolbarProxyModel {
+                    sourceModel: root.toolbar.toolbarProvider.tools
+                    filter: ToolbarModel.ToolGroup.Adjustment
+'''
+        text = replace_once(text, marker, '''            ToolbarTool {
+                objectName: "goodbotAgentSubmissions"
+                toolbar: root.toolbar
+                type: ToolbarTool.Type.FoldoutButton
+                label: "Agent submissions"
+                iconSource: "qrc:/qml/images/inbox.svg"
+                Layout.fillWidth: true
+                onClicked: {
+                    root.toolbar.closeFoldout();
+                    GoodBot.Session.openInbox();
+                }
             }
-        }
-    }
 
 ''' + marker)
-        loader = "delegate: ToolLoader {"
-        if text.count(loader) != 5:
-            raise ValueError("Settings menu tool delegates are missing or ambiguous")
-        text = text.replace(loader, "delegate: SettingsToolRow {")
     elif name.endswith("/DocumentView.qml"):
         text = replace_once(text, "    property SceneController sceneController: sceneView.controller\n", '''    Connections {
         target: GoodBot.Session

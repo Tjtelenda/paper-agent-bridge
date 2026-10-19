@@ -11,7 +11,7 @@ QtObject {
     function openInbox() {
         if (!panel) return;
         panel.showPopup();
-        panel.client.pane = "inbox";
+        panel.client.pane = "queued";
         console.log("GOODBOT_INBOX_OPENED");
     }
     function openSend(provider) {
@@ -40,7 +40,7 @@ QtObject {
             if(destination==="obsidian")vaultStatus(client.notice);return;
         }
         capturingPage=true;
-        if(destination!=="obsidian"){client.pane="inbox";client.notice="Rendering the whole page…";}
+        if(destination!=="obsidian"){client.pane="queued";client.notice="Rendering the whole page…";}
         var done=false;
         function fail(reason) {
             if(done)return;done=true;capturingPage=false;client.notice=String(reason);

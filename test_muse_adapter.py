@@ -95,7 +95,9 @@ class MuseAdapterTests(unittest.TestCase):
         self.assertEqual(fake.request["session_id"], session_id(self.request_id))
         self.assertIn("Ask Muse about this diagram.", fake.request["message"])
         self.assertIn("source_asset", fake.request["message"])
-        self.assertIn("relay_client.py reply", fake.request["message"])
+        self.assertIn("There is no on-device", fake.request["message"])
+        self.assertIn("established normal Muse channel", fake.request["message"])
+        self.assertNotIn("relay_client.py reply", fake.request["message"])
         self.assertNotIn("data_base64", fake.request["message"])
         self.assertLess(len(json.dumps(fake.request).encode()), 64 * 1024)
 

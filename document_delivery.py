@@ -38,8 +38,9 @@ def resolve_folder(binary, folder):
     parent, current = '', '/'
     for component in PurePosixPath(folder).parts[1:]:
         matches = [n for n in listing(binary, current)
-                   if n['name'] == component and n['parent'] == parent]
-        if len(matches) != 1 or matches[0]['type'] != 'CollectionType' or not matches[0]['id']:
+                   if n['name'].casefold() == component.casefold() and n['parent'] == parent]
+        if (len(matches) != 1 or matches[0]['name'] != component
+                or matches[0]['type'] != 'CollectionType' or not matches[0]['id']):
             raise ValueError('Destination folder is missing or ambiguous; create/select it in the library first')
         parent = matches[0]['id']
         current = str(PurePosixPath(current) / component)

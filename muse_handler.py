@@ -2,7 +2,6 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import socket
 import sys
 import uuid
@@ -61,16 +60,15 @@ def build_message(envelope):
     }
     if "source" in envelope:
         context["source"] = envelope["source"]
-    helper = Path(__file__).with_name("relay_client.py")
     instruction = (
-        "This is an explicitly confirmed reMarkable message. Preserve its thread identity and any source "
-        "reference; a source-free conversation is not a notebook capture. Answer "
-        "the user's writing/comment. Local asset paths name immutable preserved files; use file.read only "
-        "when the image is needed. The chat POST acknowledgement is not your answer. To return your final "
-        "answer to the tablet, write it to a private UTF-8 file and run: "
-        f"python3 {helper} reply --request-id {envelope['request_id']} "
-        f"--in-reply-to {envelope['message_id']} --actor muse ANSWER_FILE. "
-        "The helper reads its credential from private local configuration; never request or print it.\n\n"
+        "This is an explicitly confirmed reMarkable submission for processing. Preserve its request "
+        "identity and any source reference; a legacy source-free submission is not a notebook capture. "
+        "Process the user's writing/comment within existing permissions. Local asset paths name "
+        "immutable preserved files; use file.read only when the image is needed. There is no on-device "
+        "chat: do not post an answer to the tablet or call its relay reply helper. If a response is "
+        "needed, use your established normal Muse channel when its destination and send authority "
+        "are already configured. Never invent a destination or claim delivery without evidence. "
+        "The socket acknowledgement means accepted for processing, not completed.\n\n"
         "Message context:\n" + json.dumps(context, ensure_ascii=False, indent=2, sort_keys=True)
     )
     encoded = json.dumps({"message": instruction, "session_id": session_id(envelope["request_id"])},

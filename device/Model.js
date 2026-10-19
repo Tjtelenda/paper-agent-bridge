@@ -75,21 +75,6 @@ function enqueue(state, item, capture, keepDraft) {
     state.outbox=next.outbox;state.captures=captures;state.draft=next.draft;
     return item.id;
 }
-function queueReply(state, reply, text, ink) {
-    if(!reply||!reply.request_id||!reply.message_id)throw Error('Reply thread required');
-    if(ink&&text.trim())throw Error('Choose typed OR drawn reply');
-    if(!ink&&!text.trim())throw Error('Write or draw your reply first');
-    if(text.length>16000)throw Error('Reply must be at most 16,000 characters');
-    if(ink)checkImage(imageFromUrl(ink),4*1024*1024);
-    var id=uid(),content=ink?{mode:'raw_image',image:imageFromUrl(ink)}:{mode:'raw_text',text:text};
-    return enqueue(state,{id:id,route:4,created_at:new Date().toISOString(),payload:{message_id:id,request_id:reply.request_id,in_reply_to:reply.message_id,content:content}},null);
-}
-function queueConversation(state, destination, text) {
-    if(['muse','hermes','codex'].indexOf(destination)<0)throw Error('Choose an agent');
-    if(typeof text!=='string'||!text.trim()||text.length>16000)throw Error('Write a message of at most 16,000 characters');
-    var id=uid();
-    return enqueue(state,{id:id,route:10,created_at:new Date().toISOString(),payload:{request_id:id,destination:destination,content:{mode:'raw_text',text:text}}},null);
-}
 function queue(state, capture, destination, converted, comment, ink, keepDraft) {
     if (!capture || !capture.source || !capture.image) throw Error('Capture handoff required');
     if (['muse','hermes','codex','obsidian'].indexOf(destination)<0) throw Error('Choose a destination');
@@ -142,128 +127,54 @@ function sourcePageIndex(source, entry) {
         throw Error('Source page is unavailable; no other page was opened');
     return index;
 }
-function _turnText(content, comment, selection) {
-    content=content||{};comment=comment||{};
-    var text=content.mode==='raw_text'?content.text||'':content.mode==='converted_text'?(content.text||content.converted_text||''):(selection?'Notebook selection':'Handwritten reply');
-    if(comment.mode==='text'&&comment.text)text+=(text?'\n':'')+comment.text;
-    else if(comment.mode==='ink')text+=(text?'\n':'')+'Handwritten comment';
-    return text||'Message';
-}
-function threadMessages(state, requestId) {
-    var messages=[],seen={},order=0;
-    function timestamp(value) {
-        if(!value)return null;
-        var parsed=Date.parse(value);return isFinite(parsed)?parsed:null;
-    }
-    function add(message) {
-        if(!message.message_id)return;
-        var key='@'+message.message_id,existing=seen[key];
-        if(existing) {
-            if(message.detail) {
-                existing.text=message.text;existing.source=message.source||existing.source;
-                existing.preview_request_id=message.preview_request_id;existing.image=message.image||'';
-                existing.comment_image=message.comment_image||'';
-            }
-            if(message.pending) {existing.pending=true;existing.status=message.status;}
-            if(timestamp(message.created_at)!==null&&(timestamp(existing.created_at)===null||timestamp(message.created_at)<timestamp(existing.created_at)))
-                existing.created_at=message.created_at;
-            return;
+function historySubmissions(state) {
+    var items=[],byId={};
+    function ensure(id, event) {
+        if(!id)return null;
+        var key='@'+id,item=byId[key];
+        if(!item) {
+            item={id:id,request_id:event.request_id||id,message_id:event.message_id||id,
+                destination:event.destination||'',source:event.source||null,content:{},comment:null,
+                created_at:event.created_at||'',status:'accepted',stage:'',stage_state:'',summary:''};
+            byId[key]=item;items.push(item);
         }
-        message._order=order++;seen[key]=message;messages.push(message);
+        if(event.destination)item.destination=event.destination;
+        if(event.source)item.source=event.source;
+        if(event.created_at&&!item.created_at)item.created_at=event.created_at;
+        return item;
     }
     state.events.forEach(function(e){
-        if(e.kind==='device_message'&&e.request_id===requestId) {
-            add({role:'user',actor:'You',request_id:requestId,message_id:e.message_id,in_reply_to:e.in_reply_to,
-                text:_turnText(e.content,e.comment,!!e.source),source:e.source||null,
-                preview_request_id:e.source&&e.content&&e.content.mode!=='raw_text'?requestId:'',status:e.status||'Sent',
-                created_at:e.created_at||'',detail:true,pending:false});
-        } else if((e.kind==='conversation_accepted'||e.kind==='capture_accepted')&&e.request_id===requestId) {
-            var original=e.original||{};
-            add({role:'user',actor:'You',request_id:requestId,message_id:requestId,in_reply_to:null,
-                text:_turnText(original,null,!!e.source),source:e.source||null,
-                preview_request_id:original.mode==='raw_text'?'':requestId,status:'Sent',created_at:e.created_at||'',pending:false});
-        } else if(e.kind==='agent_reply'&&e.message&&e.message.request_id===requestId) {
-            add({role:'agent',actor:e.message.actor||'Agent',request_id:requestId,message_id:e.message.message_id,
-                in_reply_to:e.message.in_reply_to||requestId,text:e.message.text||'',source:e.source||null,
-                preview_request_id:'',status:'',created_at:e.message.created_at||e.created_at||'',pending:false});
+        var item=null;
+        if(e.kind==='device_message') {
+            item=ensure(e.message_id||e.request_id,e);
+            item.content=e.content||item.content;item.comment=e.comment||item.comment;
+            item.status=e.status||item.status;
+        } else if(e.kind==='capture_accepted'||e.kind==='conversation_accepted') {
+            item=ensure(e.request_id,e);
+            if(!item.content.mode)item.content=e.original||{};
+        } else if(e.kind==='handoff_update') {
+            item=ensure(e.message_id||e.request_id,e);item.status=e.status||item.status;
+        } else if(e.kind==='local_receipt') {
+            item=byId['@'+e.request_id];if(item&&e.status)item.status=e.status;
+        } else if(e.kind==='stage_update') {
+            item=ensure(e.request_id,e);item.stage=e.stage||'';item.stage_state=e.state||'';
+            item.summary=summary(e);
+        } else if(e.kind==='needs_review') {
+            item=byId['@'+e.request_id];if(item){item.status='needs_review';item.summary=e.status||'';}
         }
     });
-    state.outbox.forEach(function(item){
-        var payload=item.payload||{};
-        if(payload.request_id!==requestId)return;
-        var content=payload.content||{},comment=payload.comment||{};
-        add({role:'user',actor:'You',request_id:requestId,message_id:payload.message_id||item.id,
-            in_reply_to:payload.in_reply_to||null,text:_turnText(content,comment,!!payload.source),source:payload.source||null,
-            image:imageUrl(content.image||content.source_image||null),comment_image:comment.mode==='ink'?imageUrl(comment.image):'',
-            preview_request_id:'',status:item.status==='needs_review'?'Needs review':'Queued',created_at:item.created_at||'',detail:true,pending:true});
-    });
-    // Unknown timestamps from restored legacy state remain fixed. Sort only the
-    // contiguous dated runs around them so no ordering is invented for old turns.
-    for(var start=0;start<messages.length;) {
-        messages[start]._time=timestamp(messages[start].created_at);
-        if(messages[start]._time===null){start++;continue;}
-        var end=start+1;
-        while(end<messages.length) {
-            messages[end]._time=timestamp(messages[end].created_at);
-            if(messages[end]._time===null)break;
-            end++;
-        }
-        var run=messages.slice(start,end).sort(function(a,b){
-            return a._time===b._time?a._order-b._order:a._time-b._time;
-        });
-        for(var at=0;at<run.length;at++)messages[start+at]=run[at];
-        start=end;
+    return items.reverse();
+}
+function submissionStatus(item) {
+    if(!item)return '';
+    if(item.stage) {
+        var stages={raw_stored:'Original stored (raw_stored)',parsed:'Read (parsed)',stored:'Saved (stored)',organized_recorded:'Organized (organized_recorded)'};
+        var states={pending:'waiting',in_progress:'in progress',completed:'complete',needs_review:'needs review',failed:'failed'};
+        return (stages[item.stage]||item.stage)+' · '+(states[item.stage_state]||item.stage_state||'unknown');
     }
-    // Message ancestry is authoritative when tablet and relay clocks differ or
-    // relay timestamps lose sub-second precision. Stable topological emission
-    // keeps unrelated turns in time order and falls back unchanged for a cycle.
-    var fallback=messages.slice(),remaining=messages.slice(),ordered=[],known={},emitted={};
-    messages.forEach(function(message){known['@'+message.message_id]=true;});
-    while(remaining.length) {
-        var ready=-1;
-        for(var candidate=0;candidate<remaining.length;candidate++) {
-            var parentId=remaining[candidate].in_reply_to;
-            if(!parentId||!known['@'+parentId]||emitted['@'+parentId]){ready=candidate;break;}
-        }
-        if(ready<0){ordered=fallback;break;}
-        var next=remaining.splice(ready,1)[0];ordered.push(next);emitted['@'+next.message_id]=true;
-    }
-    messages=ordered;
-    messages.forEach(function(message){delete message._order;delete message._time;delete message.detail;});
-    return messages;
-}
-function chatThreads(state) {
-    var ids=[],info={};
-    function touch(id,destination,source) {
-        if(!id)return;
-        var old=ids.indexOf(id);if(old>=0)ids.splice(old,1);ids.push(id);
-        if(!info[id])info[id]={request_id:id,destination:'',source:null};
-        if(destination)info[id].destination=destination;
-        if(source)info[id].source=source;
-    }
-    state.events.forEach(function(e){
-        if(e.kind==='conversation_accepted'||e.kind==='capture_accepted'||e.kind==='device_message')
-            touch(e.request_id,e.destination,e.source);
-        else if(e.kind==='agent_reply'&&e.message)touch(e.message.request_id,e.message.actor,e.source);
-    });
-    state.outbox.forEach(function(item){var p=item.payload||{};touch(p.request_id,p.destination,p.source);});
-    return ids.reverse().map(function(id){
-        var messages=threadMessages(state,id),last=messages.length?messages[messages.length-1]:null,meta=info[id];
-        return {request_id:id,destination:meta.destination||'agent',source:meta.source,
-            preview:last?last.text:'Conversation',turns:messages.length,pending:messages.some(function(m){return m.pending;})};
-    });
-}
-function threadPending(state, requestId) {
-    return state.outbox.some(function(item){return item.payload&&item.payload.request_id===requestId;});
-}
-function replyTarget(state, requestId) {
-    var messages=threadMessages(state,requestId);
-    for(var i=messages.length-1;i>=0;i--)if(!messages[i].pending&&messages[i].message_id)
-        return {request_id:requestId,message_id:messages[i].message_id};
-    return null;
-}
-function inboxEvents(state) {
-    return state.events.filter(function(e){return ['conversation_accepted','capture_accepted','agent_reply','device_message'].indexOf(e.kind)<0;});
+    var labels={accepted:'Accepted by relay',dispatching:'Dispatching',handed_off:'Handed off',
+        dispatch_uncertain:'Dispatch uncertain',queued_for_device:'Queued for device',needs_review:'Needs review'};
+    return labels[item.status]||String(item.status||'Accepted by relay').replace(/_/g,' ');
 }
 function summary(e) {
     if(e.kind==='agent_reply')return e.message.actor+': '+e.message.text;
@@ -277,7 +188,7 @@ function summary(e) {
         if(evidence.links&&evidence.links.length)parts.push('Linked: '+evidence.links.join(', '));
         return parts.join('\n');
     }
-    if(e.kind==='conversation_accepted')return 'Chat with '+e.destination+': '+((e.original||{}).text||'Message received');
+    if(e.kind==='conversation_accepted')return 'Submission to '+e.destination+': '+((e.original||{}).text||'Message received');
     var labels={local_receipt:'Received by relay',capture_accepted:'Selection received',handoff_update:'Delivery update',needs_review:'Needs your review'};
     return (labels[e.kind]||'Update')+': '+(e.status||'received').replace(/_/g,' ');
 }

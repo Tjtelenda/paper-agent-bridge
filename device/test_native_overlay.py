@@ -85,42 +85,33 @@ Item {
         self.assertLess(patched.index('objectName: "goodbotSendToVault"'),
                         patched.index("SendByEmailButton {"))
 
-    def test_settings_menu_places_inbox_after_share(self):
+    def test_settings_menu_places_submissions_between_utility_and_adjustment_rows(self):
         original = '''import QtQuick
 ToolbarTool {
-    Component {
-        id: settingsComponent
-        ColumnLayout {
-            Repeater { delegate: ToolLoader {} }
-            Repeater { delegate: ToolLoader {} }
-            Repeater { delegate: ToolLoader {} }
-            Repeater { delegate: ToolLoader {} }
-            Repeater { delegate: ToolLoader {} }
+            Repeater {
+                id: utilityTools
+                model: ToolbarProxyModel {
+                    filter: ToolbarModel.ToolGroup.Utility
+                }
+                delegate: ToolLoader {}
+            }
+            Repeater {
+                model: ToolbarProxyModel {
+                    sourceModel: root.toolbar.toolbarProvider.tools
+                    filter: ToolbarModel.ToolGroup.Adjustment
+                }
+                delegate: ToolLoader {}
+            }
         }
-    }
-}
 '''
         patched = patch_resource("/qt/qml/xofm/libs/toolbar/qml/SettingsMenu.qml", original)
-        self.assertEqual(patched.count("delegate: SettingsToolRow {"), 5)
-        self.assertNotIn("delegate: ToolLoader {", patched)
-        self.assertIn('visible: settingsToolLoader.visible && settingsToolLoader.item?.objectName === "shareMenu"', patched)
-        self.assertIn('label: "Agent inbox"', patched)
+        self.assertEqual(patched.count("delegate: ToolLoader {}"), 2)
+        self.assertNotIn("SettingsToolRow", patched)
+        self.assertIn('label: "Agent submissions"', patched)
         self.assertIn("GoodBot.Session.openInbox()", patched)
-        self.assertLess(patched.index("ToolLoader {"), patched.index('objectName: "goodbotAgentInbox"'))
-        for forwarding in (
-            "required property var model",
-            "required property int buttonType",
-            "required property Item toolbar",
-            "property alias active: settingsToolLoader.active",
-            "property alias asynchronous: settingsToolLoader.asynchronous",
-            "property alias foldoutPosition: settingsToolLoader.foldoutPosition",
-            "readonly property alias shown: settingsToolLoader.shown",
-            "readonly property alias item: settingsToolLoader.item",
-            "antialiasing: row.antialiasing",
-            "signal select(var tool)",
-            "Layout.fillHeight: false",
-        ):
-            self.assertIn(forwarding, patched)
+        self.assertLess(patched.index("id: utilityTools"), patched.index('objectName: "goodbotAgentSubmissions"'))
+        self.assertLess(patched.index('objectName: "goodbotAgentSubmissions"'),
+                        patched.index("filter: ToolbarModel.ToolGroup.Adjustment"))
 
 
 if __name__ == "__main__":

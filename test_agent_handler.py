@@ -37,11 +37,6 @@ class AgentHandlerTests(unittest.TestCase):
         self.state = self.root / "state"
         self.config = self.root / "config"
         self.config.mkdir(mode=0o700)
-        relay = self.config / "relay"
-        relay.mkdir(mode=0o700)
-        (relay / "url").write_text("http://127.0.0.1:8898")
-        (relay / "token").write_text("r" * 40)
-        (relay / "token").chmod(0o600)
         hermes = self.config / "hermes"
         hermes.mkdir(mode=0o700)
         (hermes / "url").write_text("http://127.0.0.1:8642")
@@ -101,8 +96,7 @@ class AgentHandlerTests(unittest.TestCase):
             Path(command[command.index("-o") + 1]).write_text("A follow-up answer")
             return Result()
 
-        self.assertEqual(run_job(job, self.config, agent_runner=agent,
-                                 relay_runner=lambda *args, **kwargs: Result()), 0)
+        self.assertEqual(run_job(job, self.config, agent_runner=agent), 0)
         command, kwargs = calls[0]
         self.assertNotIn("--image", command)
         self.assertIn(b"Prior answer", kwargs["input"])
@@ -126,8 +120,7 @@ class AgentHandlerTests(unittest.TestCase):
 
         for turn in (envelope, dict(envelope, type="device_reply", message_id="device_reply_00001")):
             job, _, _ = self.accepted_job(turn)
-            self.assertEqual(run_job(job, self.config, opener=opener,
-                                     relay_runner=lambda *args, **kwargs: Result()), 0)
+            self.assertEqual(run_job(job, self.config, opener=opener), 0)
         self.assertEqual(sessions[0], sessions[1])
         self.assertTrue(all('"source"' not in chat for chat in chats))
 
@@ -166,9 +159,7 @@ class AgentHandlerTests(unittest.TestCase):
             return Response(200, {"session_id": requests[0][1]["id"],
                                   "message": {"role": "assistant", "content": "Hermes answer"}})
 
-        relays = []
-        relay = lambda command, **kwargs: relays.append((command, kwargs)) or Result()
-        self.assertEqual(run_job(job, self.config, opener=opener, relay_runner=relay), 0)
+        self.assertEqual(run_job(job, self.config, opener=opener), 0)
         self.assertEqual(requests[0][1].keys(), {"id", "source"})
         self.assertEqual(requests[1][1].keys(), {"message", "instructions"})
         self.assertEqual(requests[1][2], WORKER_TIMEOUT)
@@ -178,9 +169,11 @@ class AgentHandlerTests(unittest.TestCase):
         self.assertNotIn("provider", json.dumps(requests))
         self.assertEqual(json.loads((job / "status.json").read_text())["state"], "completed")
         self.assertEqual((job / "answer.txt").read_text(), "Hermes answer")
-        self.assertIn("--actor", relays[0][0])
-        self.assertEqual(run_job(job, self.config, opener=lambda *_args: self.fail(),
-                                 relay_runner=lambda *_args: self.fail()), 0)
+        status = json.loads((job / "status.json").read_text())
+        self.assertFalse(status["tablet_reply"])
+        self.assertEqual(status["normal_channel_delivery"], "not_verified")
+        self.assertIn("There is no on-device chat", requests[1][1]["message"])
+        self.assertEqual(run_job(job, self.config, opener=lambda *_args: self.fail()), 0)
 
     def test_obsidian_fails_closed_before_job_or_agent_dispatch(self):
         envelope = dict(self.base, destination="obsidian")
@@ -201,11 +194,8 @@ class AgentHandlerTests(unittest.TestCase):
             return Response(200, {"deferred": True, "recoverable": True,
                                   "message": {"content": "Queued elsewhere"}})
 
-        relay_calls = []
-        self.assertEqual(run_job(job, self.config, opener=opener,
-                                 relay_runner=lambda *args, **kwargs: relay_calls.append(args)), 1)
+        self.assertEqual(run_job(job, self.config, opener=opener), 1)
         self.assertEqual(json.loads((job / "status.json").read_text())["state"], "agent_uncertain")
-        self.assertEqual(relay_calls, [])
         self.assertEqual(run_job(job, self.config, opener=lambda *_args: self.fail()), 1)
 
     def test_hermes_session_mismatch_stops_before_chat(self):
@@ -217,8 +207,7 @@ class AgentHandlerTests(unittest.TestCase):
             urls.append(request.full_url)
             return Response(201, {"session": {"id": "different_session"}})
 
-        self.assertEqual(run_job(job, self.config, opener=opener,
-                                 relay_runner=lambda *_args, **_kwargs: self.fail()), 1)
+        self.assertEqual(run_job(job, self.config, opener=opener), 1)
         self.assertEqual(len(urls), 1)
         self.assertEqual(json.loads((job / "status.json").read_text())["state"], "agent_uncertain")
 
@@ -239,9 +228,7 @@ class AgentHandlerTests(unittest.TestCase):
             Path(command[command.index("-o") + 1]).write_text("Codex answer")
             return Result()
 
-        relay_calls = []
-        relay = lambda command, **kwargs: relay_calls.append(command) or Result()
-        self.assertEqual(run_job(job, self.config, agent_runner=agent, relay_runner=relay), 0)
+        self.assertEqual(run_job(job, self.config, agent_runner=agent), 0)
         command, kwargs = agent_calls[0]
         self.assertIn("--sandbox", command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
@@ -249,7 +236,7 @@ class AgentHandlerTests(unittest.TestCase):
         self.assertEqual(command[-1], "-")
         self.assertIn(b"Converted words", kwargs["input"])
         self.assertNotIn("dangerously", " ".join(command))
-        self.assertEqual(relay_calls[0][relay_calls[0].index("--actor") + 1], "codex")
+        self.assertFalse(json.loads((job / "status.json").read_text())["tablet_reply"])
 
 
 if __name__ == "__main__":
