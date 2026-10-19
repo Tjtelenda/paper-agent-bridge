@@ -69,11 +69,15 @@ QtObject {
             },fail);
         } catch(error) { fail(error); }
     }
-    function capture(image, notebook, page, title, label, rect, bounds) {
+    function capture(image, notebook, page, title, label, rect, bounds, destination) {
         if (!panel) return;
         panel.showPopup();
         var client = panel.client;
-        if (!client.loaded || client.capture || client.replyTo || client.directChat) {
+        if (capturingPage) {
+            client.notice = "Wait for the current page capture to finish.";
+            return;
+        }
+        if (!client.loaded || client.hasActiveDraft) {
             client.notice = "Finish or send your current draft before capturing another selection.";
             return;
         }
@@ -81,6 +85,12 @@ QtObject {
             var handoff = Model.selectionCapture(client.nativeEndpoint.encodeImage(image),
                 notebook, page, title, label, rect, bounds);
             client.receive(2, JSON.stringify(handoff));
+            if (!client.capture || client.capture.source.notebook_id !== notebook
+                    || client.capture.source.page_id !== page
+                    || client.capture.source.revision !== handoff.source.revision
+                    || client.capture.source.selection !== "crop")
+                throw Error("The captured selection could not be opened as a draft");
+            if (destination === "obsidian") client.submit(false, "obsidian");
             console.log("GOODBOT_SELECTION_CAPTURED");
         } catch (error) {
             client.notice = String(error);

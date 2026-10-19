@@ -159,3 +159,12 @@ and send controls. Full-page rendering is implemented and installed on the test
 device; pixel accuracy and long-page coverage still need manual acceptance. Send to vault retains a raw capture for the Obsidian destination, but
 the downstream scheduled handoff remains blocked pending a qualified image intake
 path. Queued does not mean stored or organized.
+
+See [backend capabilities](BACKEND-CAPABILITIES.md) for the tested document route,
+cloud-client operations, and native notebook commands that still need integration.
+
+The lasso context menu now includes native send and archive icons for agent and
+vault respectively. The vault action preserves the exact raw crop and queues it
+only after notebook/page/render identity checks; all active drafts block replacement.
+The revision is installed on the test tablet, with visual/touch acceptance pending.
+Scheduled vault processing remains disconnected.

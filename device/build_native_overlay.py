@@ -63,7 +63,7 @@ def patch_resource(name, text):
                 }
 ''')
     elif name.endswith("/SceneSelectionHandler.qml"):
-        text = replace_once(text, "    id: selectionRoot\n", "    id: selectionRoot\n    signal goodbotSelectionRequested(var image, rect sceneRect, rect pageRect)\n")
+        text = replace_once(text, "    id: selectionRoot\n", "    id: selectionRoot\n    signal goodbotSelectionRequested(var image, rect sceneRect, rect pageRect, string destination)\n")
         marker = "        ArkControls.ContextualMenu.Button {\n            id: selectionDelete"
         text = replace_once(text, marker, '''        ArkControls.ContextualMenu.Button {
             objectName: "goodbotSendSelection"
@@ -74,7 +74,21 @@ def patch_resource(name, text):
             onClicked: selectionRoot.goodbotSelectionRequested(
                 selectionRoot.selectionPreview().image.image(),
                 selectionRoot.sceneSelectionRect,
-                selectionRoot.controller.primaryContentRect)
+                selectionRoot.controller.primaryContentRect,
+                "")
+        }
+
+        ArkControls.ContextualMenu.Button {
+            objectName: "goodbotSendSelectionToVault"
+            focusPolicy: Qt.NoFocus
+            type: tools.type
+            iconSource: "qrc:/ark/icons/archive"
+            enabled: !selectionRoot.working && !!selectionRoot.controller
+            onClicked: selectionRoot.goodbotSelectionRequested(
+                selectionRoot.selectionPreview().image.image(),
+                selectionRoot.sceneSelectionRect,
+                selectionRoot.controller.primaryContentRect,
+                "obsidian")
         }
 
 ''' + marker)
@@ -105,10 +119,10 @@ def patch_resource(name, text):
     }
 ''')
         marker = "            id: selectionHandler\n"
-        text = replace_once(text, marker, marker + '''            onGoodbotSelectionRequested: (image, rect, bounds) => {
+        text = replace_once(text, marker, marker + '''            onGoodbotSelectionRequested: (image, rect, bounds, destination) => {
                 if (!root.document) return;
                 GoodBot.Session.capture(image, root.document.id.toString(), root.pageId,
-                    root.document.visibleName, String(root.page + 1), rect, bounds);
+                    root.document.visibleName, String(root.page + 1), rect, bounds, destination);
             }
 ''')
     elif name.endswith("/ShareMenu.qml"):

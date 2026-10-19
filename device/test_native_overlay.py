@@ -20,7 +20,7 @@ class NativeOverlayTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 replace_once(text, "anchor", "new")
 
-    def test_selection_adds_no_note_mutation(self):
+    def test_selection_adds_agent_and_vault_without_note_mutation(self):
         original = '''import QtQuick
 Item {
     id: selectionRoot
@@ -32,12 +32,33 @@ Item {
 }
 '''
         patched = patch_resource("/qml/common/SceneSelectionHandler.qml", original)
+        self.assertIn('objectName: "goodbotSendSelection"', patched)
+        self.assertIn('objectName: "goodbotSendSelectionToVault"', patched)
+        self.assertIn('iconSource: "qrc:/ark/icons/archive"', patched)
+        self.assertIn('"obsidian")', patched)
+        self.assertNotIn("Accessible.", patched)
         self.assertIn("selectionPreview().image.image()", patched)
         self.assertIn("controller.primaryContentRect", patched)
         self.assertIn("id: selectionDelete", patched)
+        self.assertLess(patched.index('objectName: "goodbotSendSelection"'),
+                        patched.index('objectName: "goodbotSendSelectionToVault"'))
+        self.assertLess(patched.index('objectName: "goodbotSendSelectionToVault"'),
+                        patched.index("id: selectionDelete"))
         self.assertNotIn("deleteSelectedItems", patched)
         self.assertNotIn("clearSelectedItems", patched)
         self.assertNotIn("convertSelection", patched)
+
+        scene = '''import QtQuick
+Item {
+    id: root
+    SceneSelectionHandler {
+            id: selectionHandler
+    }
+}
+'''
+        routed = patch_resource("/qml/device/view/documentview/DeviceSceneView.qml", scene)
+        self.assertIn("(image, rect, bounds, destination)", routed)
+        self.assertIn("rect, bounds, destination", routed)
 
     def test_share_actions_reuse_stock_foldout_rows(self):
         original = '''import QtQuick

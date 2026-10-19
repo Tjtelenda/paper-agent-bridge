@@ -335,3 +335,66 @@ assert.equal(shareClient.capture.source.selection,'crop');
 assert.equal(shareClient.capture.source.crop.x,0.01);
 assert(Math.abs(shareClient.capture.source.crop.height-50/1500)<1e-12);
 console.log('Share preserves active lasso crop identity through the same preview/send workflow');
+
+const selectionState=m.fresh(),selectionSubmissions=[];
+const selectionClient={loaded:true,hasActiveDraft:false,capture:null,notice:'',state:selectionState,
+    nativeEndpoint:{encodeImage:()=>encoded},
+    receive:(type,body)=>{assert.equal(type,2);selectionClient.capture=JSON.parse(body);},
+    submit:(asText,destination)=>{
+        selectionSubmissions.push([asText,destination]);
+        m.queue(selectionState,selectionClient.capture,destination,null,'','');
+        selectionClient.capture=null;
+    }};
+const selectionContext={Model:m,capturingPage:false,
+    panel:{client:selectionClient,showPopup:()=>{}},console:{log:()=>{}}};
+vm.createContext(selectionContext);
+vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),selectionContext);
+selectionContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
+assert.deepEqual(selectionSubmissions,[[false,'obsidian']]);
+assert.equal(selectionState.outbox[0].payload.destination,'obsidian');
+assert.equal(selectionState.outbox[0].payload.content.mode,'raw_image');
+const queuedSelection=selectionState.captures[selectionState.outbox[0].id];
+assert.equal(queuedSelection.image.data_base64,'AAAA');
+assert.equal(queuedSelection.source.crop.x,0.1);assert.equal(queuedSelection.source.crop.y,0.05);
+assert(Math.abs(queuedSelection.source.crop.width-0.2)<1e-12);
+assert(Math.abs(queuedSelection.source.crop.height-0.15)<1e-12);
+selectionContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'');
+assert.equal(selectionSubmissions.length,1);assert.equal(selectionClient.capture.source.selection,'crop');
+selectionClient.capture=null;
+
+const threadDraft={threadId:'thread',comment:'keep this'};
+let blockedReceive=false,blockedSubmit=false;
+const blockedClient={loaded:true,hasActiveDraft:true,capture:null,notice:'',state:{draft:threadDraft},
+    nativeEndpoint:{encodeImage:()=>assert.fail('active draft must block encoding')},
+    receive:()=>{blockedReceive=true;},submit:()=>{blockedSubmit=true;}};
+const blockedContext={Model:m,capturingPage:false,
+    panel:{client:blockedClient,showPopup:()=>{}},console:{log:()=>{}}};
+vm.createContext(blockedContext);
+vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),blockedContext);
+blockedContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
+assert.equal(blockedClient.state.draft,threadDraft);assert.equal(blockedReceive,false);assert.equal(blockedSubmit,false);
+blockedClient.hasActiveDraft=false;blockedContext.capturingPage=true;
+blockedContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
+assert.equal(blockedClient.state.draft,threadDraft);assert.equal(blockedReceive,false);assert.equal(blockedSubmit,false);
+
+const failureDraft={threadId:'thread',comment:'keep after failure'};
+let failureReceives=0,failureSubmits=0;
+const failureClient={loaded:true,hasActiveDraft:false,capture:null,notice:'',state:{draft:failureDraft},
+    nativeEndpoint:{encodeImage:()=>{throw Error('PNG encoding failed');}},
+    receive:()=>{failureReceives++;},submit:()=>{failureSubmits++;}};
+const failureContext={Model:m,capturingPage:false,
+    panel:{client:failureClient,showPopup:()=>{}},console:{log:()=>{}}};
+vm.createContext(failureContext);
+vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),failureContext);
+failureContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
+assert.equal(failureClient.state.draft,failureDraft);assert.equal(failureReceives,0);assert.equal(failureSubmits,0);
+failureClient.nativeEndpoint.encodeImage=()=>encoded;
+failureContext.capture({},'book','page','Ideas','2',
+    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
+assert.equal(failureClient.state.draft,failureDraft);assert.equal(failureReceives,1);assert.equal(failureSubmits,0);
+console.log('Native lasso vault preserves raw crop identity, queues only after capture, and protects active drafts');
