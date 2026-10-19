@@ -164,7 +164,11 @@ See [backend capabilities](BACKEND-CAPABILITIES.md) for the tested document rout
 cloud-client operations, and native notebook commands that still need integration.
 
 The lasso context menu now includes native send and archive icons for agent and
-vault respectively. The vault action preserves the exact raw crop and queues it
-only after notebook/page/render identity checks; all active drafts block replacement.
-The revision is installed on the test tablet, with visual/touch acceptance pending.
+vault respectively. The vault action validates and queues the raw crop directly without opening the
+agent composer. Existing thread/image drafts are preserved; their bytes remain
+in the storage-limit check. A native notification confirms the final durable save.
+The user confirmed the direct vault action stays in the notebook and displays the
+native local-queue notification. Read-back confirmed a new raw-crop vault item
+on the tablet with its original image and prior draft preserved. Full-page
+rendered-pixel acceptance remains pending.
 Scheduled vault processing remains disconnected.

@@ -53,7 +53,7 @@ console.log('Twenty accepted image captures release local base64, preserve sourc
 // polls inbox immediately and a failed inbox poll does not recurse forever.
 const qml=fs.readFileSync(__dirname+'/Main.qml','utf8');
 const receiveCode=qml.slice(qml.indexOf('    function outboxItem('),qml.indexOf('    GoodBot.Endpoint {'));
-const sent=[],ctx={Model:m,state:m.fresh(),activeItemId:'pending-id',syncing:true,saving:false,dirty:false,loaded:true,
+const sent=[],ctx={vaultSavePending:false,Model:m,state:m.fresh(),activeItemId:'pending-id',syncing:true,saving:false,dirty:false,loaded:true,
     closeAfterSave:false,notice:'',eventList:{},outboxList:{},outboxCount:0,selectedOutboxId:'',selectedOutbox:null,
     chatList:{},threadList:{},chatCount:0,selectedThreadId:'',threadBlocked:false,pane:'inbox',Qt:{callLater:f=>f()},
     messageText:'',persist:()=>{},setMessageText:value=>ctx.messageText=value,send:(...args)=>sent.push(args)};
@@ -90,17 +90,17 @@ vm.runInContext(qml.slice(qml.indexOf('    function submit('),qml.indexOf('    f
 chatCtx.submit(false);
 assert.equal(chatCtx.state.outbox[0].route,10);assert.equal(chatCtx.directChat,false);
 const vaultCtx={Model:m,state:m.fresh(),directChat:false,replyTo:null,capture:capture,messageText:'',
-    ink:{hasInk:true,dataUrl:()=> 'data:image/png;base64,AAAA'},destination:{currentText:'Muse'},
+    ink:{hasInk:true,dataUrl:()=> 'data:image/png;base64,AAAA'},destination:{currentText:'Obsidian'},
     converted:{text:''},persist:()=>{},setMessageText:value=>vaultCtx.messageText=value,
     dismissKeyboard:()=>{},refreshViews:()=>{},unrestoredInk:'',notice:''};
 vm.createContext(vaultCtx);
 vm.runInContext(qml.slice(qml.indexOf('    function submit('),qml.indexOf('    function receive(')),vaultCtx);
-vaultCtx.submit(false,'obsidian');
+vaultCtx.submit(false);
 assert.equal(vaultCtx.state.outbox[0].payload.destination,'obsidian');
 assert.equal(vaultCtx.state.outbox[0].payload.content.mode,'raw_image');
 assert.equal(vaultCtx.state.outbox[0].payload.comment.mode,'ink');
-assert.equal(vaultCtx.pane,'outbox');
-assert.equal(vaultCtx.notice,'Saving to Outbox; scheduled vault handoff is not connected yet.');
+assert.equal(vaultCtx.pane,'chats');
+assert.equal(vaultCtx.notice,'Saving outbox…');
 const sourceCtx={state:m.fresh()};vm.createContext(sourceCtx);
 vm.runInContext(qml.slice(qml.indexOf('    function sourceFor('),qml.indexOf('    function submit(')),sourceCtx);
 assert.equal(sourceCtx.sourceFor({request_id:'chat',source:null}),null);
@@ -200,7 +200,7 @@ inkCtx.submit(false);assert.equal(inkCtx.state.outbox.length,0);assert(inkCtx.no
 
 let sizePrompt=0;
 const sizeClosePrompt={};Object.defineProperty(sizeClosePrompt,'visible',{set:value=>{if(value)sizePrompt++;}});
-const sizeCtx={loaded:true,dirty:false,saving:false,closeAfterSave:true,
+const sizeCtx={vaultSavePending:false,loaded:true,dirty:false,saving:false,closeAfterSave:true,
     state:{text:'x'.repeat(24*1024*1024)},notice:'',unsavedClose:sizeClosePrompt,send:()=>assert.fail('oversize state must not send')};
 vm.createContext(sizeCtx);
 vm.runInContext(qml.slice(qml.indexOf('    function persist('),qml.indexOf('    function sync(')),sizeCtx);
@@ -284,6 +284,7 @@ const reversed=m.fresh();reversed.events=[
 assert.deepEqual(m.threadMessages(reversed,'chain').map(turn=>turn.message_id),['chain-a','chain-b','chain-c','chain-d','chain-e']);
 console.log('Receipt races honor causal parents across mixed precision and clock skew, keep pending badges, and preserve legacy/cyclic fallback order');
 
+{
 const sessionQml=fs.readFileSync(__dirname+'/native/Session.qml','utf8');
 const wholeEncoded={sha256:'a'.repeat(64),image:{media_type:'image/png',data_base64:'AAAA'}};
 const pageHandoff=m.pageCapture(wholeEncoded,'book','page','Whole notebook','2');
@@ -295,106 +296,83 @@ assert(layout.width<=2048&&layout.height<=8192&&layout.width*layout.height<=16*1
 assert.equal(m.pageLayout({x:0,y:0,width:1000,height:1500},{x:0,y:0,width:0,height:0}).height,1500);
 assert.throws(()=>m.pageLayout({x:0,y:0,width:0,height:0},{}));
 assert.throws(()=>m.pageLayout({x:0,y:0,width:1000,height:1000000},{x:0,y:0,width:1000,height:1000000}));
-let resumes=0,renderCount=0,callback,errorCallback;
-const vaultSubmissions=[];
-const shareClient={loaded:false,hasActiveDraft:false,pane:'chats',notice:'',capture:null,
-    nativeEndpoint:{encodeImage:()=>wholeEncoded},resumeDraft:()=>resumes++,
-    receive:(type,body)=>{assert.equal(type,2);shareClient.capture=JSON.parse(body);},
-    submit:(...args)=>vaultSubmissions.push(args)};
-const provider={goodbotCapturePage:(success,failure)=>{renderCount++;callback=success;errorCallback=failure;}};
-const shareContext={Model:m,capturingPage:false,panel:{client:shareClient,showPopup:()=>{}},console:{log:()=>{}}};
-vm.createContext(shareContext);
-vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function openSend('),sessionQml.indexOf('    function capture(')),shareContext);
-shareContext.openSend(provider);assert(shareClient.notice.includes('Still loading'));assert.equal(renderCount,0);
-shareClient.loaded=true;shareClient.hasActiveDraft=true;
-shareContext.openSend(provider);assert.equal(resumes,1);assert.equal(renderCount,0);
-shareContext.openVault(provider);assert(shareClient.notice.includes('Finish or send'));assert.equal(vaultSubmissions.length,0);
-shareClient.hasActiveDraft=false;
-shareContext.openSend(provider);assert.equal(renderCount,1);assert.equal(shareContext.capturingPage,true);
-shareContext.openSend(provider);assert.equal(renderCount,1);
-callback({},'book','page','Whole notebook','2');assert.equal(shareContext.capturingPage,false);
-assert.equal(shareClient.capture.source.selection,'page');assert.equal(vaultSubmissions.length,0);
-shareClient.capture=null;
-shareContext.openVault(provider);callback({},'book','page','Whole notebook','2');
-assert.deepEqual(vaultSubmissions,[[false,'obsidian']]);
-shareClient.capture=null;
-shareContext.openSend(provider);errorCallback('render failed');assert.equal(shareContext.capturingPage,false);assert.equal(shareClient.notice,'render failed');
-callback({},'book','other','Other','3');assert.equal(shareClient.capture,null);
-shareContext.openSend(null);assert(shareClient.notice.includes('not ready'));
-shareContext.openSend(provider);shareClient.hasActiveDraft=true;
-callback({},'book','page','Whole notebook','2');assert.equal(shareClient.capture,null);assert.equal(shareContext.capturingPage,false);
-assert(shareClient.notice.includes('existing draft was preserved'));
-shareClient.capture=capture;shareClient.directChat=false;shareClient.replyTo=null;
-shareContext.openVault(provider);assert.equal(vaultSubmissions.length,2);assert.equal(renderCount,4);
-console.log('Full-page geometry, exact identity, Share rendering, direct vault queue, cancellation and draft protection passed');
+const retained=m.fresh();retained.draft={comment:'keep my draft'};const retainedDraft=retained.draft;
+m.queue(retained,pageHandoff,'obsidian',null,'','',true);assert.strictEqual(retained.draft,retainedDraft);
+const nearlyFull=m.fresh();nearlyFull.draft={comment:'x'.repeat(24*1024*1024-256)};
+const nearlyFullDraft=nearlyFull.draft;
+assert.throws(()=>m.queue(nearlyFull,pageHandoff,'obsidian',null,'','',true));
+assert.strictEqual(nearlyFull.draft,nearlyFullDraft);assert.equal(nearlyFull.outbox.length,0);
 
-shareClient.capture=null;shareClient.hasActiveDraft=false;
-shareContext.openSend(provider);
-callback({},'book','page','Selection','2',{x:10,y:20,width:100,height:50},{x:0,y:0,width:1000,height:1500});
-assert.equal(shareClient.capture.source.selection,'crop');
-assert.equal(shareClient.capture.source.crop.x,0.01);
-assert(Math.abs(shareClient.capture.source.crop.height-50/1500)<1e-12);
-console.log('Share preserves active lasso crop identity through the same preview/send workflow');
+let popupOpens=0,queueNotices=[],savedSnapshots=[],syncCount=0;
+const directClient={Model:m,state:m.fresh(),loaded:true,restoring:false,saving:false,dirty:false,syncing:false,
+    vaultSavePending:false,closeAfterSave:false,wanted:false,activeItemId:'',notice:'',pane:'thread',
+    capture:null,replyTo:null,directChat:false,threadDraftId:'existing-thread',selectedThreadId:'existing-thread',
+    messageText:'Keep this edited draft',selectedOutboxId:'',selectedOutbox:null,sourcePreview:'',outboxCount:0,
+    chatCount:0,threadBlocked:false,unrestoredInk:'',converted:{text:''},destination:{currentIndex:1},
+    ink:{hasInk:false,clear:()=>{}},draftSave:{restart:()=>{}},eventList:{},outboxList:{},chatList:{},
+    threadList:{positionViewAtEnd:()=>{}},Qt:{callLater:f=>f()},
+    nativeEndpoint:{encodeImage:()=>wholeEncoded},
+    persist:()=>{directClient.saving=true;directClient.dirty=false;savedSnapshots.push(JSON.stringify(directClient.state));},
+    sync:()=>syncCount++,setMessageText:v=>directClient.messageText=v,
+    unsavedClose:{visible:false}};
+Object.defineProperty(directClient,'hasActiveDraft',{get:()=>!!(directClient.capture||directClient.replyTo||directClient.directChat||directClient.threadDraftId)});
+const directSession={Model:m,capturingPage:false,vaultStatus:msg=>queueNotices.push(msg),
+    panel:{client:directClient,showPopup:()=>popupOpens++},console:{log:()=>{}}};
+directClient.GoodBot={Session:directSession};
+vm.createContext(directClient);vm.runInContext(receiveCode,directClient);
+vm.runInContext(qml.slice(qml.indexOf('    function draft('),qml.indexOf('    function sourceFor(')),directClient);
+vm.createContext(directSession);
+vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function openSend('),sessionQml.lastIndexOf('\n}')),directSession);
+const cropRect={x:20,y:40,width:80,height:120},cropBounds={x:-20,y:0,width:400,height:800};
+directSession.capture({},'book','page','Ideas','2',cropRect,cropBounds,'obsidian');
+assert.equal(popupOpens,0);assert.equal(directClient.pane,'thread');
+assert.equal(directClient.messageText,'Keep this edited draft');assert.equal(directClient.threadDraftId,'existing-thread');
+assert.equal(directClient.state.draft.comment,'Keep this edited draft');assert.equal(directClient.state.outbox.length,1);
+assert.equal(directClient.state.outbox[0].payload.destination,'obsidian');
+assert.equal(directClient.state.outbox[0].payload.source.selection,'crop');
+for(const [key,value] of Object.entries({x:0.1,y:0.05,width:0.2,height:0.15}))assert(Math.abs(directClient.state.outbox[0].payload.source.crop[key]-value)<1e-12);
+assert.equal(JSON.parse(savedSnapshots[0]).draft.comment,'Keep this edited draft');
+assert.equal(queueNotices.length,0); // No success claim before the storage acknowledgement.
+directSession.capture({},'book','page','Ideas','2',cropRect,cropBounds,'obsidian');
+assert.equal(directClient.state.outbox.length,1);assert(queueNotices.at(-1).includes('finish saving'));
+queueNotices=[];directClient.receive(11,'write failed');
+assert(queueNotices.at(-1).includes('not saved'));assert(directClient.vaultSavePending);
+directClient.receive(1,'');assert.equal(queueNotices.length,1); // Dirty snapshot must be saved first.
+directClient.receive(1,'');assert(queueNotices.at(-1).includes('Queued locally'));
+assert.equal(directClient.vaultSavePending,false);assert.equal(popupOpens,0);
 
-const selectionState=m.fresh(),selectionSubmissions=[];
-const selectionClient={loaded:true,hasActiveDraft:false,capture:null,notice:'',state:selectionState,
-    nativeEndpoint:{encodeImage:()=>encoded},
-    receive:(type,body)=>{assert.equal(type,2);selectionClient.capture=JSON.parse(body);},
-    submit:(asText,destination)=>{
-        selectionSubmissions.push([asText,destination]);
-        m.queue(selectionState,selectionClient.capture,destination,null,'','');
-        selectionClient.capture=null;
-    }};
-const selectionContext={Model:m,capturingPage:false,
-    panel:{client:selectionClient,showPopup:()=>{}},console:{log:()=>{}}};
-vm.createContext(selectionContext);
-vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),selectionContext);
-selectionContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
-assert.deepEqual(selectionSubmissions,[[false,'obsidian']]);
-assert.equal(selectionState.outbox[0].payload.destination,'obsidian');
-assert.equal(selectionState.outbox[0].payload.content.mode,'raw_image');
-const queuedSelection=selectionState.captures[selectionState.outbox[0].id];
-assert.equal(queuedSelection.image.data_base64,'AAAA');
-assert.equal(queuedSelection.source.crop.x,0.1);assert.equal(queuedSelection.source.crop.y,0.05);
-assert(Math.abs(queuedSelection.source.crop.width-0.2)<1e-12);
-assert(Math.abs(queuedSelection.source.crop.height-0.15)<1e-12);
-selectionContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'');
-assert.equal(selectionSubmissions.length,1);assert.equal(selectionClient.capture.source.selection,'crop');
-selectionClient.capture=null;
+let renderCallback,renderFailure,renderCount=0;
+const directProvider={goodbotCapturePage:(ok,fail)=>{renderCount++;renderCallback=ok;renderFailure=fail;}};
+directSession.openVault(directProvider);assert.equal(renderCount,1);assert.equal(popupOpens,0);
+assert.equal(directClient.pane,'thread');
+renderCallback({},'book','page','Whole notebook','2');
+assert.equal(directClient.state.outbox.length,2);assert.equal(directClient.state.outbox[1].payload.source.selection,'page');
+assert.equal(directClient.state.draft.comment,'Keep this edited draft');assert.equal(directClient.capture,null);
+assert.equal(popupOpens,0);
+renderCallback({},'book','page','Whole notebook','2');assert.equal(directClient.state.outbox.length,2);
+directClient.receive(1,'');
+const keepCapture={source:{notebook_id:'old-book',page_id:'old-page'},image:capture.image};
+directClient.threadDraftId='';directClient.selectedThreadId='';directClient.capture=keepCapture;
+directClient.pane='compose';directClient.messageText='Keep this image draft too';
+directSession.openVault(directProvider);renderCallback({},'book','page','Selection','2',cropRect,cropBounds);
+assert.strictEqual(directClient.capture,keepCapture);assert.equal(directClient.pane,'compose');
+assert.equal(directClient.state.draft.capture.source.page_id,'old-page');
+assert.equal(directClient.state.outbox.at(-1).payload.source.selection,'crop');
+assert.equal(popupOpens,0);directClient.receive(1,'');
+const beforeFailure=JSON.stringify(directClient.state);
+directClient.nativeEndpoint.encodeImage=()=>{throw Error('PNG encoding failed');};
+directSession.capture({},'book','page','Ideas','2',cropRect,cropBounds,'obsidian');
+assert.equal(JSON.stringify(directClient.state),beforeFailure);assert.equal(popupOpens,0);
+assert(queueNotices.at(-1).includes('PNG encoding failed'));
+directClient.nativeEndpoint.encodeImage=()=>wholeEncoded;
+directSession.openVault(directProvider);renderFailure('render failed');
+assert.equal(directSession.capturingPage,false);assert.equal(directClient.state.outbox.length,3);assert.equal(popupOpens,0);
+renderCallback({},'book','page','Whole notebook','2');assert.equal(directClient.state.outbox.length,3);
+directSession.openSend(directProvider);assert.strictEqual(directClient.capture,keepCapture);assert.equal(popupOpens,1);
+directClient.capture=null;directClient.state.draft=null;directClient.pane='inbox';
+directSession.capture({},'book','page','Ideas','2',cropRect,cropBounds,'');
+assert.equal(popupOpens,2);assert.equal(directClient.pane,'compose');
+assert.equal(directClient.capture.source.selection,'crop');assert.equal(directClient.state.outbox.length,3);
+console.log('Actual Session/Main direct-vault flow skips composer, keeps thread/image drafts, preserves crop/page identity, confirms durable save and retains agent preview');
 
-const threadDraft={threadId:'thread',comment:'keep this'};
-let blockedReceive=false,blockedSubmit=false;
-const blockedClient={loaded:true,hasActiveDraft:true,capture:null,notice:'',state:{draft:threadDraft},
-    nativeEndpoint:{encodeImage:()=>assert.fail('active draft must block encoding')},
-    receive:()=>{blockedReceive=true;},submit:()=>{blockedSubmit=true;}};
-const blockedContext={Model:m,capturingPage:false,
-    panel:{client:blockedClient,showPopup:()=>{}},console:{log:()=>{}}};
-vm.createContext(blockedContext);
-vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),blockedContext);
-blockedContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
-assert.equal(blockedClient.state.draft,threadDraft);assert.equal(blockedReceive,false);assert.equal(blockedSubmit,false);
-blockedClient.hasActiveDraft=false;blockedContext.capturingPage=true;
-blockedContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
-assert.equal(blockedClient.state.draft,threadDraft);assert.equal(blockedReceive,false);assert.equal(blockedSubmit,false);
-
-const failureDraft={threadId:'thread',comment:'keep after failure'};
-let failureReceives=0,failureSubmits=0;
-const failureClient={loaded:true,hasActiveDraft:false,capture:null,notice:'',state:{draft:failureDraft},
-    nativeEndpoint:{encodeImage:()=>{throw Error('PNG encoding failed');}},
-    receive:()=>{failureReceives++;},submit:()=>{failureSubmits++;}};
-const failureContext={Model:m,capturingPage:false,
-    panel:{client:failureClient,showPopup:()=>{}},console:{log:()=>{}}};
-vm.createContext(failureContext);
-vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function capture('),sessionQml.lastIndexOf('\n}')),failureContext);
-failureContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
-assert.equal(failureClient.state.draft,failureDraft);assert.equal(failureReceives,0);assert.equal(failureSubmits,0);
-failureClient.nativeEndpoint.encodeImage=()=>encoded;
-failureContext.capture({},'book','page','Ideas','2',
-    {x:20,y:40,width:80,height:120},{x:-20,y:0,width:400,height:800},'obsidian');
-assert.equal(failureClient.state.draft,failureDraft);assert.equal(failureReceives,1);assert.equal(failureSubmits,0);
-console.log('Native lasso vault preserves raw crop identity, queues only after capture, and protects active drafts');
+}

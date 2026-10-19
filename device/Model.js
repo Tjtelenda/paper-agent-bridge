@@ -66,13 +66,13 @@ function reject(state, id, reason) {
     item.status='needs_review';item.reason=reason;
     state.events.push({kind:'needs_review',request_id:item.payload.request_id,status:reason});
 }
-function enqueue(state, item, capture) {
+function enqueue(state, item, capture, keepDraft) {
     var captures={};Object.keys(state.captures).forEach(function(k){captures[k]=state.captures[k];});
     if(capture)captures[item.id]=capture;
-    var next={version:state.version,cursor:state.cursor,outbox:state.outbox.concat([item]),events:state.events,captures:captures,draft:null};
+    var next={version:state.version,cursor:state.cursor,outbox:state.outbox.concat([item]),events:state.events,captures:captures,draft:keepDraft?state.draft:null};
     if(unescape(encodeURIComponent(JSON.stringify(next))).length>24*1024*1024)
         throw Error('Local storage limit reached; draft preserved. Export/archive state before adding captures');
-    state.outbox=next.outbox;state.captures=captures;state.draft=null;
+    state.outbox=next.outbox;state.captures=captures;state.draft=next.draft;
     return item.id;
 }
 function queueReply(state, reply, text, ink) {
@@ -90,7 +90,7 @@ function queueConversation(state, destination, text) {
     var id=uid();
     return enqueue(state,{id:id,route:10,created_at:new Date().toISOString(),payload:{request_id:id,destination:destination,content:{mode:'raw_text',text:text}}},null);
 }
-function queue(state, capture, destination, converted, comment, ink) {
+function queue(state, capture, destination, converted, comment, ink, keepDraft) {
     if (!capture || !capture.source || !capture.image) throw Error('Capture handoff required');
     if (['muse','hermes','codex','obsidian'].indexOf(destination)<0) throw Error('Choose a destination');
     checkImage(capture.image,4*1024*1024);
@@ -103,7 +103,7 @@ function queue(state, capture, destination, converted, comment, ink) {
     if(ink)payload.comment={mode:'ink',image:imageFromUrl(ink)};
     else if(comment.trim())payload.comment={mode:'text',text:comment};
     if(JSON.stringify(payload).length>8*1024*1024)throw Error('Capture exceeds relay limit');
-    return enqueue(state,{id:id,route:3,created_at:new Date().toISOString(),payload:payload},capture);
+    return enqueue(state,{id:id,route:3,created_at:new Date().toISOString(),payload:payload},capture,keepDraft);
 }
 function accept(state, receipt) {
     var item=nextItem(state);

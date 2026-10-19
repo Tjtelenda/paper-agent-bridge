@@ -22,6 +22,7 @@ Control {
     property bool loaded: false
     property bool saving: false
     property bool dirty: false
+    property bool vaultSavePending: false
     property bool syncing: false
     property string activeItemId: ""
     property bool wanted: false
@@ -66,6 +67,7 @@ Control {
         var data=JSON.stringify(state);
         if(unescape(encodeURIComponent(data)).length>24*1024*1024){
             notice="Local storage limit reached; export state before adding captures";
+            if(vaultSavePending)GoodBot.Session.vaultStatus("Vault item is not saved; open Agent inbox to retry saving");
             if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             return;
         }
@@ -196,18 +198,24 @@ Control {
             return "Agent delivery is not connected yet. Messages are saved in Outbox.";
         return text;
     }
-    function submit(asText, destinationOverride) {
+    function queueVault(handoff) {
+        if(!loaded)throw Error("Still loading saved drafts; try again in a moment");
+        if(vaultSavePending)throw Error("Wait for the vault item to finish saving");
+        if(!draft())throw Error("The current draft could not be saved; nothing was queued");
+        Model.queue(state,handoff,"obsidian",null,"","",true);
+        vaultSavePending=true;wanted=true;refreshViews();persist();
+    }
+    function submit(asText) {
         try {
             var image="";
-            var vaultHandoff=destinationOverride==="obsidian";
             if(unrestoredInk)throw Error("The saved drawing could not be restored. Clear it explicitly before sending.");
             if(ink.hasInk){image=ink.dataUrl();if(!image)throw Error(ink.error||"Drawing could not be saved");}
             if(image&&messageText.trim()){notice="Choose typed OR drawn comment; clear one before sending";return;}
             if(directChat)Model.queueConversation(state,destination.currentText.toLowerCase(),messageText);
             else if(replyTo)Model.queueReply(state,replyTo,messageText,image);
-            else Model.queue(state,capture,destinationOverride||destination.currentText.toLowerCase(),asText?converted.text:null,messageText,image);
-            capture=null;replyTo=null;directChat=false;unrestoredInk="";state.draft=null;setMessageText("");pane=vaultHandoff?"outbox":"chats";wanted=true;dismissKeyboard();refreshViews();
-            notice=vaultHandoff?"Saving to Outbox; scheduled vault handoff is not connected yet.":"Saving outbox…";persist();
+            else Model.queue(state,capture,destination.currentText.toLowerCase(),asText?converted.text:null,messageText,image);
+            capture=null;replyTo=null;directChat=false;unrestoredInk="";state.draft=null;setMessageText("");pane="chats";wanted=true;dismissKeyboard();refreshViews();
+            notice="Saving outbox…";persist();
         } catch(e){notice=String(e);}
     }
     function receive(type, body) {
@@ -230,6 +238,7 @@ Control {
                 restoring=false;loaded=true;
             } else if(type===1) {
                 saving=false;if(dirty){persist();return;}
+                if(vaultSavePending){vaultSavePending=false;GoodBot.Session.vaultStatus("Queued locally for vault; processing is not connected yet");}
                 if(closeAfterSave){closeAfterSave=false;root.close();return;}
                 if(wanted){wanted=false;sync();}
             } else if(type===2) {
@@ -253,10 +262,12 @@ Control {
                 if(sendFailed){syncing=true;send(5,String(state.cursor));}
             } else if(type===11) {
                 saving=false;dirty=true;notice=body;
+                if(vaultSavePending)GoodBot.Session.vaultStatus("Vault item is not saved; open Agent inbox to retry saving");
                 if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             } else if(type===12) {
                 if(saving)dirty=true;saving=false;syncing=false;activeItemId="";
                 notice="Agent service is unavailable. Your current draft and Outbox remain open.";
+                if(vaultSavePending)GoodBot.Session.vaultStatus("Vault item is not saved; open Agent inbox to retry saving");
                 if(closeAfterSave){closeAfterSave=false;unsavedClose.visible=true;}
             }
             refreshViews();

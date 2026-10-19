@@ -202,6 +202,14 @@ def patch_resource(name, text):
             raise ValueError("Settings menu tool delegates are missing or ambiguous")
         text = text.replace(loader, "delegate: SettingsToolRow {")
     elif name.endswith("/DocumentView.qml"):
+        text = replace_once(text, "    property SceneController sceneController: sceneView.controller\n", '''    Connections {
+        target: GoodBot.Session
+        function onVaultStatus(message) {
+            if (root.visible) root.showNotification({message: message, messageIconSource: "qrc:/ark/icons/archive"});
+        }
+    }
+    property SceneController sceneController: sceneView.controller
+''')
         text = replace_once(text, "            id: toolbar\n", "            id: toolbar\n            readonly property var goodbotPageProvider: sceneView\n")
         text = replace_once(text, "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible",
                             "    property bool subDialogOpen: pages.visible\n                                 || formatSettings.visible\n                                 || root.goodbotPanelActive")
