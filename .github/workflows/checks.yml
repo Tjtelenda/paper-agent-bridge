@@ -14,9 +14,10 @@ jobs:
         with:
           node-version: '22'
       - run: sudo apt-get update && sudo apt-get install -y g++ libcurl4-openssl-dev
-      - run: python3 -m unittest -v test_bridge test_muse_adapter test_agent_handler test_document_delivery test_vault_intake test_library_control
+      - run: python3 -m unittest -v test_bridge test_muse_adapter test_agent_handler test_document_delivery test_vault_intake test_library_control test_native_control test_native_relay
       - run: python3 -m unittest discover -s device -p 'test_*.py'
       - run: node device/test_model.js
+      - run: node device/test_notebook_control.js
       - run: sh -n send.sh device/build.sh
     env:
       PYTHONDONTWRITEBYTECODE: '1'

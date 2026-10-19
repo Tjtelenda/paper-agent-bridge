@@ -1,92 +1,113 @@
-# Notebook control: operations and limits
+# Notebook control
 
-An agent instruction must distinguish a native notebook, an imported document,
-a library folder and the Quick sheets notebook. Uploading a PDF does not create
-an editable native notebook, and replacing an uploaded file does not append to it.
-The device SDK supplies a Qt toolchain; it is not an external notebook editing API.
+The native adapter runs inside the notebook app on firmware 3.29.0.153. It uses
+native controllers; it never edits live notebook files. The SDK is a Qt toolchain,
+not an officially supported notebook editing API. Firmware updates require a new
+qualification pass. Keep the tablet unlocked and avoid simultaneous manual edits.
 
-## Callable server tools
+## Execute a command
 
-`library_control.py` uses the installed paired cloud client. Paths must be exact,
-unambiguous library paths. Inspect before changing an existing item and pass its
-observed ID and version. A move to a new full path also renames the item.
+Resolve a name through `list_folder`, inspect the exact stable ID, then use the
+returned snapshot as `expected`. Duplicate names require disambiguation. Root's
+ID is the empty string. A native notebook, imported PDF/EPUB, folder and Quick
+sheets are distinct targets; never substitute a new PDF for a native append.
 
-```sh
-python3 library_control.py --rmapi /absolute/path/rmapi list /
-python3 library_control.py --rmapi /absolute/path/rmapi inspect '/Projects/Notes'
-python3 library_control.py --rmapi /absolute/path/rmapi create-folder '/Projects/New' \
-  --request-id folder_request_00001 --state-dir /private/library-operations
-python3 library_control.py --rmapi /absolute/path/rmapi move '/Projects/Notes' '/Projects/New/Notes' \
-  --expected-id OBSERVED_ID --expected-version 3 \
-  --request-id move_request_000001 --state-dir /private/library-operations
-python3 library_control.py --rmapi /absolute/path/rmapi download '/Projects/New/Notes' \
-  --expected-id OBSERVED_UUID --output-dir /private/notebook-backups
+Save a private JSON request, with one retained ID for each intended action:
+
+```json
+{"request_id":"notebook_request_00001","operation":"inspect","arguments":{"id":""}}
 ```
 
-Credentials stay in the paired client's private configuration. No shell is used
-to invoke the client. Mutations bind the request ID to the exact operation, reject
-collisions and identity changes, persist uncertainty before dispatch, and read
-back the result. Exit 2 / `dispatch_uncertain` requires read-only reconciliation;
-reusing an ID never repeats the operation. Preserve receipts. The client lacks an
-atomic compare-and-swap API: concurrent changes from another client can still
-produce uncertainty. Avoid editing the same item concurrently.
+On the reachable maintenance network:
 
-`cloud_verified` means library metadata was verified; it does not prove tablet
-sync. Download saves an unchanged private `.rmdoc` backup with a digest and source
-ID. This is not extracted text or a rendered notebook. No replacement, deletion,
-recursive mutation, raw notebook-file editing or cloud archive restoration is
-exposed. For new PDFs/EPUBs, use `document_delivery.py` and its separate receipt.
+```sh
+python3 native_control.py /private/request.json --ssh-host remarkable \
+  --state-dir /private/native-receipts
+```
 
-## Full capability map
+For images add `--image /private/picture.png`. For permanent deletion, moving
+pages or creating a notebook by moving pages, add `--confirm-delete` only within
+the user's exact authorized scope. The helper obtains an unchanged, hashed native
+backup before dispatch. A backup failure prevents the operation. It currently
+backs up individual documents, not recursive folder trees.
 
-| Requested action | Available route / exact boundary |
+`verified` means the native result was read back. Mutations also require saved
+metadata/content or page bytes; open-page only checks navigation. `needs_review`
+is not success and must not be retried with a new ID. Preserve the request and
+receipt. `--reconcile` queries the tablet's durable journal without replay;
+`--retry-undispatched` permits the original request only after reconciliation
+proves it never reached that journal. Repeating a completed ID returns its receipt;
+changing its input is rejected. A crash during a mutation remains uncertain.
+
+## Operation arguments
+
+Every command uses `{request_id,operation,arguments}`. Reject unknown arguments.
+`expected` is the complete fresh inspect snapshot; `target_expected` is the same
+for a destination document. Page identities are stable UUIDs, never page numbers.
+
+| Operation | Arguments / behavior |
 | --- | --- |
-| List folders, find a named item, inspect ID/version | `library_control.py list` and `inspect`; walk only relevant folders, reject duplicate names. |
-| Download an original / notebook backup | `library_control.py download`; ID-bound `.rmdoc`, private directory, no replacement. |
-| Create a library folder | `library_control.py create-folder`; one new exact path. Host-tested; live account mutation acceptance remains required. |
-| Rename / move a document, notebook or folder | `library_control.py move`; same source ID, new full path, no merge or overwrite. Host-tested; live account mutation acceptance remains required. |
-| Add generated text, pictures, diagrams or worksheets as a new document | Generate a PDF or DRM-free EPUB, then use the proven document delivery helper. This creates an annotatable imported document. |
-| Create a native notebook | Firmware uses `LibraryController.createDocument(parentId,name)`, followed by orientation, template and cover setup. No callable agent adapter exists yet. |
-| Add to Quick sheets | Firmware uses `LibraryController.quickSheets()`; reuse its empty last page or append when that page contains content. It is a singleton, not an arbitrary filename. No agent adapter yet. |
-| Add / insert a native page | `DocumentController.addPageWithTemplateAndPageSize`; index `-1` appends. Requires native adapter, exact notebook identity, supported paper size/template, saved-state read-back. |
-| Duplicate / copy pages or create a notebook from selected pages | `copyPages` / `LibraryController.createDocumentFromExisting`; native adapter and ordered source-page identity required. |
-| Reorder / move pages between notebooks | `DocumentController.movePages`; native adapter, exact source/destination/page order and verified backup required. |
-| Add typed text to a native page | Stock text mode and `sceneController.pasteClipboardContent(text,SceneController.KeepStyle)` operate on the active writable page/cursor. No background agent insertion adapter exists. |
-| Insert an arbitrary picture into existing notebook ink | No qualified method found. Internal clipboard item objects are not an image-upload API. A new PDF containing the image is available; inserting into the requested native page is not. |
-| List / change page templates | `Templates.list()` and `DocumentController.setTemplateForPage`; native adapter must use an installed template filename and exact page, preserving ink and orientation. Not remotely exposed. |
-| Duplicate a whole notebook/document | Stock entity selection `selectionCopy`; no qualified agent adapter. Do not upload a `.rmdoc` backup as a clone: it retains document UUIDs. |
-| Move an item to Trash / restore it | Stock selection `selectionMoveToTrash` / `selectionRestoreTrashed`; native adapter needed. The cloud client's `rm` is not Trash. |
-| Permanently delete a file/folder | Stock selection `selectionRemove`; exact scope, backup and explicit user intent required. Not exposed by the agent wrapper. Never use bulk `nuke` or empty-Trash actions. |
-| Delete pages | Stock `DocumentController.deletePages` permanently deletes them; no page Trash. Not exposed; requires verified backup, exact stable page IDs, scope confirmation and native read-back. |
-| Read a lassoed section / current page visually | Existing user-confirmed capture path; full-page pixel/long-page acceptance remains pending. Stored images can be read by the processing agent. |
-| Transcribe / organize submitted handwriting in Obsidian | Raw-image storage plus scheduled local transcription and reviewed organization; see [RAW-VAULT.md](RAW-VAULT.md). This does not modify tablet notebooks. |
-| Search all handwriting or render every modern native notebook remotely | Not qualified. Library title search and downloading `.rmdoc` are not OCR/search/rendering. |
+| `inspect` | Optional `id`; returns identity, name, parent, Trash state, ordered page IDs/templates, and active page/text length when applicable. Root also reports active editor. |
+| `list_folder` | Optional `id`; immediate children only. Walk relevant folders. |
+| `list_templates` | No arguments; installed filenames and orientation. |
+| `create_folder` | `parent_id,name`; collision refused. |
+| `create_notebook` | `parent_id,name`; optional installed `template,landscape`. Host adds stable `document_id,page_id`. Creates a writable native notebook. |
+| `quick_sheet` | No arguments; reuse empty last Quick sheets page or append. Never treats another notebook as Quick sheets. |
+| `rename` | `id,expected,name`; no overwrite. |
+| `move_item` | `id,expected,parent_id`; documents or folders, no cycles/merges. |
+| `copy_item` | `id,expected,parent_id`; native document cloning, native-generated copy name; folder recursion unavailable. |
+| `append_page` | `id,expected,template`; optional `index` (`-1` appends), stable `page_id` supplied by helper. |
+| `set_template` | `id,expected,page_id,template`; installed template on native note page; preserves ink. |
+| `copy_pages` | `id,expected,page_ids,target_id,target_expected`; optional `index`, defaults append. |
+| `move_pages` | Same as copy; backup/confirmation required. Same-document move reorders. Index refers to the original order. Leave at least one source page for cross-document moves. |
+| `create_from_pages` | `id,expected,page_ids,parent_id,name`; **moves** selected pages into a new notebook, requires backup/confirmation, leaves at least one source page. |
+| `open_page` | `id,page_id`; navigates the existing editor. |
+| `insert_text` | `id,page_id,expected,text,expected_text_length`; exact active writable native page, appends 1–16000 characters. Open it and inspect again first. |
+| `insert_image` | `id,page_id,expected,x,y`; helper stages a PNG/JPEG and supplies `image_sha256,image_format`. Coordinates are explicit native page coordinates. Exact active writable page required. |
+| `trash` / `restore` | `id,expected`; recoverable native library action. Restore uses stock behavior; inspect its resulting parent. |
+| `delete_pages` | `id,expected,page_ids`; permanent, backup/confirmation required, target must be closed, cannot delete every page. |
+| `delete_item` | `id,expected`; permanent, already in Trash, closed, document backup/confirmation required. No bulk deletion or empty Trash. |
 
-## Agent execution rules
+Never fabricate `confirmed` or a backup digest. Those fields are supplied only
+after an actual scoped backup. Operations absent from this table are unavailable;
+there is no arbitrary shell command or general script execution endpoint.
 
-Resolve names to exact paths and stable IDs before writing. For an instruction
-such as “add this to Meeting notes,” first determine whether that means append to
-an existing native page, add a new page, or deliver a separate document. Use known
-context; ask only if the target or requested scope is genuinely ambiguous. Never
-silently substitute a new PDF for an append to a named native notebook.
+## Away from home
 
-Expose only qualified tools to agents. Native method discovery is evidence for
-an implementation plan, not a successful command. Native writes require an
-authenticated in-process adapter with operation allowlists, expected document/page
-state, durable request IDs, backup/recovery for destructive changes and saved-state
-read-back. Do not use shell edits of live `.rm`, `.content` or `.metadata` files.
-Remote SSH currently works only on the reachable maintenance network. Cloud
-library operations use internet sync; native commands outside home still need
-the authenticated tablet relay connected and the tablet awake.
+`control_relay.py --config-dir /private/relay-config submit /private/request.json
+--wait 30` submits through the authenticated relay. `status REQUEST_ID` reads its
+state; `upload-image /private/image.png` stages an immutable image and returns its
+digest/format for an insertion request. Keep credentials in private configuration,
+not command arguments or request bodies. A queue acknowledgment only means queued.
+Only a completed native `verified` receipt permits reporting a tablet change.
 
-## Evidence
+The tablet's `control-relay` process makes outbound HTTPS long polls, invokes the
+same local adapter and durably retries receipts. No public SSH or tablet VPN is
+needed. Production requires the existing tunnel's route and private tablet relay
+configuration; this is not yet an end-to-end outside-home acceptance claim.
+An offline, sleeping or locked tablet can leave commands pending. Destructive
+remote actions still need a verified backup; the relay does not invent one.
 
-Inspected firmware 3.29.0.153: CreateNotebookWindow, CreateCollectionWindow,
-RenameEntityWindow, LibraryActions, PagesActions, Pages, ContentPagesMoveHeader,
-DocumentView, TemplateSelector, ActionHeader and Navigator QML. Vendor resources
-are private and are not redistributed here. These interfaces can change by build.
-Cloud behavior was checked against the pinned
-[rmapi source](https://github.com/ddvk/rmapi/tree/aa60dac8a8dbb1b4eb6a25f2caf2f3daea573373),
-especially its shell commands, sync15 API and archive reader. It is third-party
-software, not an official supported cloud API. The wrapper's host tests do not
-qualify real cloud mutations or device sync.
+## Other capabilities
+
+`library_control.py` remains the separate paired-cloud list/inspect/download and
+folder/move helper. Its `cloud_verified` status proves cloud metadata, not tablet
+sync. Downloads are original `.rmdoc` backups, not rendered or recognized text.
+The cloud client's `rm` bypasses native Trash and must not be used.
+
+PDF and DRM-free EPUB delivery uses `document_delivery.py`; it creates imported
+library documents and works through cloud sync. User-confirmed lasso/page captures
+can be processed visually and stored in Obsidian; scheduled local transcription
+and reviewed organization are documented in [RAW-VAULT.md](RAW-VAULT.md).
+Whole-vault handwriting search, arbitrary modern notebook rendering, recursive
+folder deletion and raw notebook-file rewriting are not provided.
+
+## Qualification
+
+Disposable on-tablet tests have verified native creation, folders, rename/move,
+page append/templates, page copy/reorder and cross-document moves, typed text, native images, whole
+notebook copies, creation from selected pages, Trash/restore and scoped permanent
+deletion against saved state. Quick sheets remains implemented without a separate
+field test. Remaining acceptance results and exact firmware/build/deployment
+limits are maintained in the private device handoff. Host tests alone do not prove
+screen appearance, handwriting quality, cloud synchronization or battery cost.

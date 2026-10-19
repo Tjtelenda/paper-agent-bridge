@@ -72,13 +72,14 @@ cloud library through your paired compatible client. One firmware 3.29.0.153
 device passed cloud metadata, byte-for-byte tablet sync and opening both formats.
 A different-Wi-Fi field test remains pending. This route does not wake a tablet.
 
-[Notebook control](NOTEBOOK-CONTROL.md) maps every discovered operation: folders,
-native notebooks, Quick sheets, pages, typed text, images, templates, Trash/restore
-and permanent deletion. `library_control.py` adds guarded inspection, download,
-folder creation and move/rename. Read-only cloud listing/download have live proof;
-mutations have host proof only. It refuses ambiguity, replacement and deletion.
-Native page/content edits still require an in-process adapter; stock QML method
-discovery is not proof of an available agent command.
+[Notebook control](NOTEBOOK-CONTROL.md) provides a journaled native command
+adapter, guarded SSH CLI and authenticated outbound HTTPS command relay. Native
+creation, folders, rename/move, page append/templates, page copy/reorder and typed
+text have saved-state device proof on 3.29.0.153. Read the operation map for exact
+arguments, backup requirements and remaining acceptance limits. The tablet uses
+outbound connections; no public SSH is needed. An accepted queue request is not a
+completed edit. The paired-cloud helper remains available for library inspection
+and original archive downloads.
 
 ## Build and recovery
 

@@ -3,6 +3,7 @@ import QtQuick
 import "qrc:/goodbot/Model.js" as Model
 
 QtObject {
+    property QtObject notebookControl: NotebookControl {}
     property var panel: null
     property bool capturingPage: false
     signal vaultStatus(string message)

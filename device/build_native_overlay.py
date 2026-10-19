@@ -173,6 +173,7 @@ def patch_resource(name, text):
 
 ''' + marker)
     elif name.endswith("/DocumentView.qml"):
+        text = replace_once(text, "    id: root\n", "    id: root\n    Component.onCompleted: GoodBot.Session.notebookControl.activeView = root\n")
         text = replace_once(text, "    property SceneController sceneController: sceneView.controller\n", '''    Connections {
         target: GoodBot.Session
         function onVaultStatus(message) {

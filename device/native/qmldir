@@ -3,3 +3,4 @@ plugin goodbotbridgeplugin
 singleton Session 1.0 Session.qml
 Panel 1.0 Panel.qml
 PageCapture 1.0 PageCapture.qml
+NotebookControl 1.0 NotebookControl.qml

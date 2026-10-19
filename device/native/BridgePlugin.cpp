@@ -1,5 +1,6 @@
 #include <QBuffer>
 #include "InkPad.h"
+#include "ControlEndpoint.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QImage>
@@ -260,6 +261,7 @@ public:
         Q_ASSERT(QByteArray(uri) == "GoodBot.Bridge");
         qmlRegisterType<Endpoint>(uri, 1, 0, "Endpoint");
         qmlRegisterType<InkPad>(uri, 1, 0, "InkPad");
+        qmlRegisterType<ControlEndpoint>(uri, 1, 0, "ControlEndpoint");
     }
 };
 #include "BridgePlugin.moc"

@@ -31,6 +31,11 @@ SOURCE_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,160}")
 DESTINATIONS = ("muse", "codex", "obsidian", "hermes")
 STAGES = ("raw_stored", "parsed", "stored", "organized_recorded")
 STAGE_STATES = ("pending", "in_progress", "needs_review", "completed", "failed")
+CONTROL_LIMIT = 128 * 1024
+CONTROL_OPERATIONS = frozenset(("inspect", "list_templates", "list_folder", "create_notebook",
+    "create_folder", "rename", "move_item", "append_page", "set_template", "copy_pages",
+    "move_pages", "delete_pages", "quick_sheet", "insert_text", "insert_image", "trash",
+    "restore", "delete_item", "open_page", "create_from_pages", "copy_item", "request_status"))
 
 
 class InvalidPayload(ValueError):
@@ -119,6 +124,16 @@ class Bridge:
                     request_id TEXT NOT NULL REFERENCES threads(request_id),
                     payload TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS control_requests (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT NOT NULL UNIQUE,
+                    payload_hash TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    receipt TEXT,
+                    created_at TEXT NOT NULL,
+                    completed_at TEXT
                 );
             """)
 
@@ -678,6 +693,123 @@ class Bridge:
             return None
         return image["media_type"], data
 
+    def queue_control(self, value):
+        if (not exact_keys(value, ("request_id", "operation", "arguments"))
+                or not valid_id(value["request_id"])
+                or not isinstance(value["operation"], str)
+                or value["operation"] not in CONTROL_OPERATIONS
+                or not isinstance(value["arguments"], dict)):
+            return 400, {"error": "invalid native control command"}
+        try:
+            payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"),
+                                 sort_keys=True, allow_nan=False)
+            if len(payload.encode()) > CONTROL_LIMIT:
+                raise ValueError()
+        except (ValueError, UnicodeError, RecursionError):
+            return 400, {"error": "native command exceeds limits or contains invalid values"}
+        digest = hashlib.sha256(payload.encode()).hexdigest()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old = db.execute("SELECT payload_hash FROM control_requests WHERE request_id=?",
+                             (value["request_id"],)).fetchone()
+            if old:
+                if old["payload_hash"] != digest:
+                    return 409, {"error": "request ID belongs to another native command"}
+                return 200, {"accepted": True, "request_id": value["request_id"], "duplicate": True}
+            if db.execute("SELECT count(*) FROM control_requests WHERE status!='completed'").fetchone()[0] >= 100:
+                return 429, {"error": "native command queue is full"}
+            if value["operation"] == "insert_image":
+                args = value["arguments"]
+                if self.control_asset(args.get("image_sha256"), args.get("image_format")) is None:
+                    return 400, {"error": "upload the native image asset before queuing its command"}
+            db.execute("INSERT INTO control_requests(request_id,payload_hash,payload,created_at) VALUES(?,?,?,?)",
+                       (value["request_id"], digest, payload, now()))
+        with self.events_changed:
+            self.events_changed.notify_all()
+        return 201, {"accepted": True, "request_id": value["request_id"], "duplicate": False}
+
+    def next_control(self, wait=0):
+        deadline = time.monotonic() + wait
+        with self.events_changed:
+            while True:
+                with self.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute("SELECT request_id,payload FROM control_requests "
+                                     "WHERE status!='completed' ORDER BY sequence LIMIT 1").fetchone()
+                    if row:
+                        db.execute("UPDATE control_requests SET status='dispatched' WHERE request_id=?",
+                                   (row["request_id"],))
+                if row:
+                    return {"command": json.loads(row["payload"])}
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return {"command": None}
+                self.events_changed.wait(remaining)
+
+    def control_status(self, request_id):
+        if not valid_id(request_id):
+            return 400, {"error": "invalid request ID"}
+        with self.connect() as db:
+            row = db.execute("SELECT payload,status,receipt,created_at,completed_at FROM control_requests "
+                             "WHERE request_id=?", (request_id,)).fetchone()
+        if not row:
+            return 404, {"error": "unknown native command"}
+        return 200, {"request_id": request_id, "operation": json.loads(row["payload"])["operation"],
+                     "status": row["status"], "receipt": json.loads(row["receipt"]) if row["receipt"] else None,
+                     "created_at": row["created_at"], "completed_at": row["completed_at"]}
+
+    def control_receipt(self, value):
+        if (not exact_keys(value, ("request_id", "operation", "status", "result"))
+                or not valid_id(value["request_id"])
+                or value["status"] not in ("verified", "needs_review", "rejected")
+                or not isinstance(value["result"], dict)):
+            return 400, {"error": "invalid native receipt"}
+        try:
+            receipt = json.dumps(value, ensure_ascii=False, separators=(",", ":"),
+                                 sort_keys=True, allow_nan=False)
+            if len(receipt.encode()) > 2 * 1024 * 1024:
+                raise ValueError()
+        except (ValueError, UnicodeError, RecursionError):
+            return 400, {"error": "invalid or oversized native receipt"}
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT payload,status,receipt FROM control_requests WHERE request_id=?",
+                             (value["request_id"],)).fetchone()
+            if not row:
+                return 404, {"error": "unknown native command"}
+            if json.loads(row["payload"])["operation"] != value["operation"]:
+                return 409, {"error": "native receipt operation mismatch"}
+            if row["receipt"]:
+                if row["receipt"] != receipt:
+                    return 409, {"error": "native receipt conflicts with durable receipt"}
+                return 200, {"accepted": True, "request_id": value["request_id"], "duplicate": True}
+            if row["status"] != "dispatched":
+                return 409, {"error": "native command has not been dispatched"}
+            db.execute("UPDATE control_requests SET status='completed',receipt=?,completed_at=? WHERE request_id=?",
+                       (receipt, now(), value["request_id"]))
+        return 201, {"accepted": True, "request_id": value["request_id"], "duplicate": False}
+
+    def upload_control_asset(self, value):
+        try:
+            if not exact_keys(value, ("image",)):
+                raise InvalidPayload("expected one image")
+            image = self._store_image(value["image"], MAX_SOURCE_IMAGE)
+        except InvalidPayload as error:
+            return 400, {"error": str(error)}
+        return 201, {"image_sha256": image["sha256"], "image_format": "png" if image["media_type"] == "image/png" else "jpeg",
+                     "size": image["size"]}
+
+    def control_asset(self, digest, image_format):
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or image_format not in ("png", "jpeg"):
+            return None
+        path = self.asset_dir / (digest + (".png" if image_format == "png" else ".jpg"))
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_SOURCE_IMAGE:
+            return None
+        data = path.read_bytes()
+        if not data or hashlib.sha256(data).hexdigest() != digest:
+            return None
+        return "image/" + image_format, data
+
 
 def make_server(bridge, device_token, relay_token, port=0):
     token_pattern = r"[A-Za-z0-9_-]{32,128}"
@@ -709,6 +841,9 @@ def make_server(bridge, device_token, relay_token, port=0):
                 "/v1/replies": (device_token, bridge.device_reply),
                 "/v1/agent/replies": (relay_token, bridge.agent_reply),
                 "/v1/agent/stages": (relay_token, bridge.report_stage),
+                "/v1/agent/control/requests": (relay_token, bridge.queue_control),
+                "/v1/agent/control/assets": (relay_token, bridge.upload_control_asset),
+                "/v1/device/control/receipts": (device_token, bridge.control_receipt),
             }
             if path not in routes:
                 self.respond(404, {"error": "not found"})
@@ -719,7 +854,7 @@ def make_server(bridge, device_token, relay_token, port=0):
                 return
             try:
                 payload = self.read_json()
-            except (ValueError, UnicodeError, json.JSONDecodeError):
+            except (ValueError, UnicodeError, RecursionError):
                 self.respond(400, {"error": "invalid or oversized JSON body"})
                 return
             code, receipt = action(payload)
@@ -727,10 +862,29 @@ def make_server(bridge, device_token, relay_token, port=0):
 
         def do_GET(self):
             parsed = urlsplit(self.path)
-            if not self.authorized(device_token):
+            expected = relay_token if parsed.path.startswith("/v1/agent/control/requests/") else device_token
+            if not self.authorized(expected):
                 self.respond(401, {"error": "unauthorized"})
                 return
             try:
+                if parsed.path.startswith("/v1/agent/control/requests/"):
+                    self.respond(*bridge.control_status(parsed.path.removeprefix("/v1/agent/control/requests/")))
+                    return
+                if parsed.path == "/v1/device/control/next":
+                    query = parse_qs(parsed.query)
+                    wait = int(query.get("wait", ["0"])[0])
+                    if not 0 <= wait <= 25:
+                        raise ValueError()
+                    self.respond(200, bridge.next_control(wait))
+                    return
+                if parsed.path.startswith("/v1/device/control/assets/"):
+                    match = re.fullmatch(r"([0-9a-f]{64})\.(png|jpeg)", parsed.path.removeprefix("/v1/device/control/assets/"))
+                    asset = bridge.control_asset(*match.groups()) if match else None
+                    if asset:
+                        self.respond_bytes(200, *asset)
+                    else:
+                        self.respond(404, {"error": "native image asset not found"})
+                    return
                 if parsed.path in ("/v1/inbox", "/v1/events"):
                     query = parse_qs(parsed.query, strict_parsing=False)
                     after = int(query.get("after", ["0"])[0])
