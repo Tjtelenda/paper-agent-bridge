@@ -1,0 +1,6 @@
+# Copy privately to /home/root/.local/share/goodbot-bridge/config, chmod 600.
+# HTTPS origin only, no trailing slash. Supply real credentials outside version control.
+url=https://bridge.example.com
+token=REPLACE_WITH_RANDOM_DEVICE_TOKEN_AT_LEAST_32_CHARS
+cf_id=
+cf_secret=

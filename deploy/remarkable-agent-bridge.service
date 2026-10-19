@@ -1,0 +1,18 @@
+# Example user unit: adjust clone/config paths privately before installing.
+[Unit]
+Description=Paper agent message relay
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/paper-agent-bridge
+EnvironmentFile=%h/.config/paper-agent-bridge/service.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+ExecStart=/usr/bin/python3 %h/paper-agent-bridge/bridge.py --state-dir %h/.local/state/paper-agent-bridge/relay --commands %h/.config/paper-agent-bridge/commands.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
