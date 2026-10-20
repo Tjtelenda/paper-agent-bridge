@@ -6,6 +6,16 @@ from build_native_overlay import build, patch_resource, replace_once
 
 
 class NativeOverlayTest(unittest.TestCase):
+    def test_page_capture_fails_closed_without_native_viewport(self):
+        source = (Path(__file__).parent / "native" / "PageCapture.qml").read_text()
+        self.assertNotIn("SceneView", source)
+        self.assertNotIn("grabToImage", source)
+        self.assertNotIn("controller", source)
+        self.assertNotIn("enqueue", source)
+        self.assertIn('failed("Full-page capture is unavailable.', source)
+        for name in ("document", "pageId", "layout", "renderProfile"):
+            self.assertRegex(source, rf"required property \w+ {name}\b")
+
     def test_firmware_mismatch_creates_nothing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -59,6 +69,9 @@ Item {
         routed = patch_resource("/qml/device/view/documentview/DeviceSceneView.qml", scene)
         self.assertIn("(image, rect, bounds, destination)", routed)
         self.assertIn("rect, bounds, destination", routed)
+        self.assertNotIn("goodbotPageRenderer", routed)
+        self.assertNotIn("pageLayout", routed)
+        self.assertIn('fail("Full-page capture is unavailable.', routed)
 
     def test_share_actions_reuse_stock_foldout_rows(self):
         original = '''import QtQuick

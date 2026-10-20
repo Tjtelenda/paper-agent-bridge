@@ -94,7 +94,6 @@ def patch_resource(name, text):
 ''' + marker)
     elif name.endswith("/DeviceSceneView.qml"):
         text = replace_once(text, "    id: root\n", '''    id: root
-    Component { id: goodbotPageRenderer; GoodBot.PageCapture {} }
     function goodbotCapturePage(complete, fail) {
         if (!root.document || !root.controller || !root.sceneView || root.isLoading)
             throw Error("Wait for the current page to finish loading");
@@ -107,15 +106,7 @@ def patch_resource(name, text):
                 selection.sceneSelectionRect, root.controller.primaryContentRect);
             return;
         }
-        const renderer = goodbotPageRenderer.createObject(root, {
-            document: root.document, pageId: page,
-            layout: GoodBot.Session.pageLayout(root.controller.primaryContentRect, root.controller.extendedContentRect),
-            renderProfile: root.sceneView.colorProfile
-        });
-        if (!renderer) throw Error("The native page renderer could not be created");
-        renderer.completed.connect(function(image) { complete(image, notebook, page, title, label); renderer.destroy(); });
-        renderer.failed.connect(function(reason) { fail(reason); renderer.destroy(); });
-        renderer.start();
+        fail("Full-page capture is unavailable. Select writing with the lasso, then send to agent or vault.");
     }
 ''')
         marker = "            id: selectionHandler\n"

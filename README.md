@@ -4,7 +4,7 @@ Experimental reMarkable notebook-to-agent submissions with a Python relay,
 persistent receipts, a Qt Quick panel and a firmware-specific native overlay.
 This is an independent community project, not a supported reMarkable product.
 
-Send a page or lassoed section to an agent, optionally with typed or handwritten
+Send a lassoed section to an agent, optionally with typed or handwritten
 comments, or send it directly to vault intake. The UI uses native Share rows for
 Send to agent and Send to vault, plus Agent submissions below Share in the parent
 menu. There is no floating button or live chat. Queued contains unsent work;
@@ -118,6 +118,7 @@ sh -n send.sh device/build.sh
 Tests use synthetic data and mock agents. They do not prove live agent response
 channels, firmware compatibility, visual spacing, handwriting accuracy or pen feel.
 Selection capture and direct-to-vault queueing have device acceptance. Whole-page
-rendering exists, but pixel accuracy and long-page coverage remain unqualified.
+capture is disabled: the experimental native reader caused an application crash.
+The Share entry reports that limitation and asks for a lasso selection instead.
 Whole-notebook sending, native remote editing, suspend/wake and away-network
 end-to-end submissions are not qualified. Status polling cannot wake the tablet.
