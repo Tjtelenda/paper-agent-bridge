@@ -10,6 +10,8 @@ Send to agent and Send to vault, plus Agent submissions below Share in the paren
 menu. There is no floating button or live chat. Queued contains unsent work;
 History contains relay-accepted submissions and their actual processing status.
 Agent responses belong in their established normal channels.
+Vault queue notices report local persistence and awaiting a relay receipt;
+queueing alone does not establish either disconnection or completed processing.
 
 The panel uses native navigation, tabs, dropdowns, typography and confirmation
 controls. Text fields use the native keyboard; tapping outside dismisses it.

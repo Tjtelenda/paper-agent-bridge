@@ -113,7 +113,7 @@ Control {
     function outboxStatus(item) {
         if(!item)return "";
         if(item.status==="needs_review")return "Needs review";
-        if(item.payload&&item.payload.destination==="obsidian")return "Queued; vault processing not connected";
+        if(item.payload&&item.payload.destination==="obsidian")return "Queued for vault; awaiting relay receipt";
         return syncing&&activeItemId===item.id?"Sending; awaiting receipt":"Queued";
     }
     function outboxText(item) {
@@ -223,7 +223,7 @@ Control {
                 restoring=false;loaded=true;
             } else if(type===1) {
                 saving=false;if(dirty){persist();return;}
-                if(vaultSavePending){vaultSavePending=false;GoodBot.Session.vaultStatus("Queued locally for vault; processing is not connected yet");}
+                if(vaultSavePending){vaultSavePending=false;GoodBot.Session.vaultStatus("Queued locally for vault");}
                 if(closeAfterSave){closeAfterSave=false;root.close();return;}
                 if(wanted){wanted=false;sync();}
             } else if(type===2) {
