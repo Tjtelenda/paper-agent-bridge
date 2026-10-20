@@ -99,7 +99,7 @@ function accept(state, receipt) {
         content:content.mode==='raw_text'?{mode:'raw_text',text:content.text}:
             content.mode==='converted_text'?{mode:'converted_text',text:content.text}:{mode:'raw_image'},
         comment:comment&&comment.mode==='text'?{mode:'text',text:comment.text}:comment?{mode:'ink'}:null,
-        status:receipt.status,created_at:item.created_at||new Date().toISOString()});
+        status:receipt.status,created_at:item.created_at||''});
     state.events.push({kind:'local_receipt',request_id:receipt.request_id,status:receipt.status});
     if(item.route===3&&state.captures[item.id])state.captures[item.id]={source:state.captures[item.id].source};
     state.outbox.splice(state.outbox.indexOf(item),1);
@@ -118,6 +118,27 @@ function sourceLabel(source) {
     if(!source)return 'Original notebook';
     return (source.notebook_title||'Notebook')+' · '+(source.page_label||'Selected page');
 }
+function submissionSource(source) {
+    if(!source)return 'Source: unavailable';
+    var parts=[source.notebook_title||'Document title unavailable'];
+    parts.push(source.page_label?'Page '+source.page_label:'Page unavailable');
+    if(source.selection==='crop')parts.push('Lasso selection');
+    else if(source.selection==='page')parts.push('Whole page');
+    return 'Source: '+parts.join(' · ');
+}
+function submissionTime(value) {
+    if(typeof value!=='string'||!/(Z|[+-]\d{2}:?\d{2})$/.test(value))return 'unavailable';
+    var date=new Date(value);
+    if(!isFinite(date.getTime()))return 'unavailable';
+    function pad(n){return n<10?'0'+n:String(n);}
+    var offset=-date.getTimezoneOffset(),zone='UTC'+(offset<0?'-':'+')+pad(Math.floor(Math.abs(offset)/60))+':'+pad(Math.abs(offset)%60);
+    return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+' '+pad(date.getHours())+':'+pad(date.getMinutes())+' ('+zone+', device time)';
+}
+function submissionTimes(item, queued) {
+    if(!item)return '';
+    var text='Submitted: '+submissionTime(queued?item.created_at:item.submitted_at);
+    return queued?text:text+'\nAccepted: '+submissionTime(item.accepted_at);
+}
 function sourcePageIndex(source, entry) {
     if(!source||!entry||typeof entry.pageForId!=='function'||typeof entry.idForPage!=='function')
         throw Error('Source notebook is unavailable');
@@ -135,7 +156,7 @@ function historySubmissions(state) {
         if(!item) {
             item={id:id,request_id:event.request_id||id,message_id:event.message_id||id,
                 destination:event.destination||'',source:event.source||null,content:{},comment:null,
-                created_at:event.created_at||'',status:'accepted',stage:'',stage_state:'',summary:''};
+                created_at:event.created_at||'',submitted_at:'',accepted_at:'',status:'accepted',stage:'',stage_state:'',summary:''};
             byId[key]=item;items.push(item);
         }
         if(event.destination)item.destination=event.destination;
@@ -148,9 +169,11 @@ function historySubmissions(state) {
         if(e.kind==='device_message') {
             item=ensure(e.message_id||e.request_id,e);
             item.content=e.content||item.content;item.comment=e.comment||item.comment;
+            if(e.created_at&&!item.submitted_at)item.submitted_at=e.created_at;
             item.status=e.status||item.status;
         } else if(e.kind==='capture_accepted'||e.kind==='conversation_accepted') {
             item=ensure(e.request_id,e);
+            if(e.created_at&&!item.accepted_at)item.accepted_at=e.created_at;
             if(!item.content.mode)item.content=e.original||{};
         } else if(e.kind==='handoff_update') {
             item=ensure(e.message_id||e.request_id,e);item.status=e.status||item.status;

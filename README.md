@@ -12,6 +12,9 @@ History contains relay-accepted submissions and their actual processing status.
 Agent responses belong in their established normal channels.
 Vault queue notices report local persistence and awaiting a relay receipt;
 queueing alone does not establish either disconnection or completed processing.
+Queued and History cards include the source document/page and submission time;
+History also shows the separate relay acceptance time. Timestamps identify the
+device time zone, and unavailable legacy metadata is never inferred.
 
 The panel uses native navigation, tabs, dropdowns, typography and confirmation
 controls. Text fields use the native keyboard; tapping outside dismisses it.
@@ -107,6 +110,9 @@ preserve SSH recovery, save drafts, stage separately and arm a timed rollback to
 the stock app before activation. Device paths in this prototype are fixed and
 require review for your layout. Never replace the stock executable or notebook
 storage. No universal installer or recovery command is provided.
+Replace loaded resource bundles/libraries by staging and verifying a new file,
+then atomically renaming it on the same filesystem; never overwrite a mapped file
+in place. Alternatively stop the app before replacement.
 
 ## Checks and remaining acceptance
 

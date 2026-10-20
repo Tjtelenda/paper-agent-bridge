@@ -331,7 +331,9 @@ Control {
                                 ArkControls.Label { text: String(root.outboxDestination(modelData) || "Agent").replace(/^./, function(c){ return c.toUpperCase(); }); type: ArkControls.Label.LargeStrong; Layout.fillWidth: true }
                                 ArkControls.Label { text: root.outboxStatus(modelData); type: ArkControls.Label.SmallSubtle }
                             }
-                            ArkControls.Body { text: root.outboxText(modelData) || (modelData.payload && modelData.payload.source ? Model.sourceLabel(modelData.payload.source) : "Saved submission"); elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Caption { text: Model.submissionSource((modelData.payload||{}).source); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Caption { text: Model.submissionTimes(modelData, true); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Body { visible: !!(modelData.payload && modelData.payload.content && modelData.payload.content.mode !== "raw_image" && root.outboxText(modelData)); text: root.outboxText(modelData); elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         }
                         MouseArea { anchors.fill: parent; onClicked: { root.selectedQueued=true;root.selectedSubmissionId=modelData.id;root.selectedSubmission=root.outboxItem(modelData.id);root.pane="detail"; } }
                     }
@@ -356,7 +358,9 @@ Control {
                                 ArkControls.Label { text: String(modelData.destination || "Agent").replace(/^./, function(c){ return c.toUpperCase(); }); type: ArkControls.Label.LargeStrong; Layout.fillWidth: true }
                                 ArkControls.Label { text: Model.submissionStatus(modelData); type: ArkControls.Label.SmallSubtle }
                             }
-                            ArkControls.Body { text: root.historyText(modelData) || (modelData.source ? Model.sourceLabel(modelData.source) : "Legacy submission"); elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Caption { text: Model.submissionSource(modelData.source); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Caption { text: Model.submissionTimes(modelData, false); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            ArkControls.Body { visible: modelData.content.mode !== "raw_image" && root.historyText(modelData).length > 0; text: root.historyText(modelData); elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         }
                         MouseArea { anchors.fill: parent; onClicked: {
                             root.selectedQueued=false;root.selectedSubmissionId=modelData.id;root.selectedSubmission=modelData;
@@ -413,6 +417,8 @@ Control {
                 ScrollView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     ColumnLayout { width: parent.width; spacing: 12
                         ArkControls.Title { text: selectedSubmission ? (selectedQueued ? root.outboxStatus(selectedSubmission) + " · " + root.outboxDestination(selectedSubmission) : Model.submissionStatus(selectedSubmission) + " · " + (selectedSubmission.destination || "Agent")) : ""; type: ArkControls.Title.Medium; Layout.fillWidth: true }
+                        ArkControls.Caption { text: selectedSubmission ? Model.submissionSource(selectedQueued ? (selectedSubmission.payload||{}).source : selectedSubmission.source) : ""; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        ArkControls.Caption { text: Model.submissionTimes(selectedSubmission, selectedQueued); wrapMode: Text.Wrap; Layout.fillWidth: true }
                         ArkControls.Caption { text: selectedSubmission ? "Stable ID: " + selectedSubmission.id : ""; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         ArkControls.Body { visible: selectedQueued && selectedSubmission && !!selectedSubmission.reason; text: "Last error: " + (selectedSubmission ? selectedSubmission.reason : ""); type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         ArkControls.Body { visible: !selectedQueued && selectedSubmission && !!selectedSubmission.summary; text: selectedSubmission ? selectedSubmission.summary : ""; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
