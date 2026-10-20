@@ -45,7 +45,7 @@ Control {
     property string previewRequestId: ""
     property var confirmSource: null
     readonly property int activeTabIndex: pane === "history" ? 1 : 0
-    readonly property bool hasActiveDraft: state.draft !== null || capture !== null
+    readonly property bool hasActiveDraft: state.draft !== null
     readonly property int keyboardInset: pane==="compose" ? Math.max(0,Qt.inputMethod.keyboardRectangle.height) : 0
     readonly property bool convertedAvailable: capture&&typeof capture.converted_text==="string"&&capture.converted_text.trim().length>0
     // The native popup owns visibility; saved drafts survive closing it.
@@ -96,6 +96,7 @@ Control {
     function draft() {
         if(restoring)return true;
         if(!capture)return true;
+        if(state.draft===null&&pane!=="compose")return true;
         var drawing=unrestoredInk;
         if(!unrestoredInk&&ink.hasInk){drawing=ink.dataUrl();if(!drawing){notice=ink.error||"Drawing could not be saved; the previous draft is still kept";return false;}}
         state.draft={capture:capture,comment:messageText,converted:converted.text,destination:destination.currentIndex,
@@ -199,7 +200,8 @@ Control {
             if(ink.hasInk){image=ink.dataUrl();if(!image)throw Error(ink.error||"Drawing could not be saved");}
             if(image&&messageText.trim()){notice="Choose typed OR drawn comment; clear one before sending";return;}
             Model.queue(state,capture,destination.currentText.toLowerCase(),asText?converted.text:null,messageText,image);
-            capture=null;unrestoredInk="";state.draft=null;setMessageText("");pane="queued";wanted=true;dismissKeyboard();refreshViews();
+            var wasRestoring=restoring;restoring=true;state.draft=null;pane="queued";unrestoredInk="";ink.clear();setMessageText("");restoring=wasRestoring;
+            wanted=true;dismissKeyboard();refreshViews();
             notice="Saving queued submission…";persist();
         } catch(e){notice=String(e);}
     }
@@ -220,6 +222,7 @@ Control {
                     destination.currentIndex=state.draft.destination||0;pane="compose";
                     if(state.draft.ink&&!ink.loadDataUrl(state.draft.ink)){unrestoredInk=state.draft.ink;notice=ink.error||"Saved drawing could not be restored; the original drawing is still retained";}}
                 else if(state.draft)notice="A legacy conversation draft is retained in saved state. Use your normal agent channel for new messages.";
+                else capture=state.last_capture;
                 restoring=false;loaded=true;
             } else if(type===1) {
                 saving=false;if(dirty){persist();return;}
@@ -229,8 +232,9 @@ Control {
             } else if(type===2) {
                 var handoff=JSON.parse(body);
                 if(!handoff.source||!handoff.image)throw Error('Capture needs source and image');
-                if(state.draft||capture){notice="Finish or send the current draft before starting another selection";refreshViews();return;}
-                restoring=true;capture=handoff;converted.text=handoff.converted_text||"";setMessageText("");unrestoredInk="";ink.clear();pane="compose";restoring=false;draft();
+                if(state.draft){notice="Finish or send the current draft before starting another selection";refreshViews();return;}
+                restoring=true;capture=handoff;converted.text=handoff.converted_text||"";setMessageText("");
+                unrestoredInk="";ink.clear();destination.currentIndex=1;pane="compose";restoring=false;draft();
             } else if(type===3||type===4||type===10) {
                 Model.accept(state,JSON.parse(body));activeItemId="";syncing=false;wanted=true;persist();
             } else if(type===5) {
@@ -316,7 +320,7 @@ Control {
                 RowLayout {
                     Layout.fillWidth: true
                     ArkControls.Title { text: "Queued submissions"; type: ArkControls.Title.Medium; Layout.fillWidth: true }
-                    ArkControls.Button { text: "Resume draft"; type: ArkTokens.Button.tertiary; visible: !!capture; onClicked: resumeDraft() }
+                    ArkControls.Button { text: "Resume draft"; type: ArkTokens.Button.tertiary; visible: root.hasActiveDraft; onClicked: resumeDraft() }
                 }
                 ArkControls.Body { visible: queuedList.count === 0 && !state.draft && !capture; text: "Nothing is waiting to be submitted" }
                 ArkControls.Body { visible: !!state.draft && !capture; text: "A legacy conversation draft is retained. Continue agent conversations through your normal channels."; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
@@ -383,7 +387,7 @@ Control {
                         ArkControls.Title { text: capture && capture.source.selection === "page" ? "Confirm captured page" : "Confirm original selection"; type: ArkControls.Title.Medium }
                         Image { visible: !!capture || sourcePreview.length > 0; source: capture && capture.image ? Model.imageUrl(capture.image) : sourcePreview; Layout.fillWidth: true; Layout.preferredHeight: 240; fillMode: Image.PreserveAspectFit }
                         ArkControls.Body { text: capture ? Model.sourceLabel(capture.source) : ""; type: ArkControls.Body.Small; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                        ArkControls.Dropdown { id: destination; model: ["Hermes", "Muse", "Codex", "Obsidian"]; onActivated: draft() }
+                        ArkControls.Dropdown { id: destination; model: ["Hermes", "Muse", "Codex", "Obsidian"]; currentIndex: 1; onActivated: draft() }
                         ArkControls.Label { visible: root.convertedAvailable; text: "Converted text from this capture"; type: ArkControls.Label.LargeStrong }
                         TextArea { id: converted; visible: root.convertedAvailable; placeholderText: "Review converted text"; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.preferredHeight: 150; onTextChanged: if (loaded) draft() }
                         ArkControls.Body { visible: !root.convertedAvailable; text: "Text conversion is unavailable for this selection. The original image can still be sent."; wrapMode: Text.Wrap; Layout.fillWidth: true }

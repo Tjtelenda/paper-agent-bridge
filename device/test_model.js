@@ -27,6 +27,15 @@ assert.equal(m.submissionStatus(m.historySubmissions(state)[0]),'Read (parsed) Â
 assert.throws(()=>m.ingest(state,{cursor:4,events:[{cursor:4},{cursor:3}]}));assert.equal(state.cursor,2);
 console.log('Queued capture acceptance becomes source-capable History with truthful receipt and stage status');
 
+const repeated=m.fresh();
+const repeatedFirst=m.queue(repeated,capture,'muse',null,'','');
+repeated.events.push({kind:'capture_accepted',request_id:repeatedFirst,destination:'muse',source:capture.source,original:{mode:'raw_image'}});
+const repeatedRestored=m.restore(JSON.parse(JSON.stringify(repeated)));
+assert.equal(repeatedRestored.last_capture.source.page_id,'page');
+const repeatedSecond=m.queue(repeatedRestored,repeatedRestored.last_capture,'muse',null,'','');
+assert.notEqual(repeatedSecond,repeatedFirst);assert.equal(repeatedRestored.events.length,1);
+console.log('A preserved capture can be intentionally sent again with a fresh ID without losing history');
+
 assert.throws(()=>m.queue(m.fresh(),capture,'hermes','','',''));
 assert.throws(()=>m.queue(m.fresh(),capture,'muse',null,'x'.repeat(4001),''));
 assert.throws(()=>m.queue(m.fresh(),capture,'muse','x'.repeat(16001),'',''));
@@ -40,8 +49,16 @@ console.log('Payload bounds and rejected-item retention keep the remaining queue
 
 const bounded=m.fresh(),largeCapture={source:capture.source,image:{media_type:'image/png',data_base64:'AAAA'.repeat(300000)}};
 for(let i=0;i<20;i++){const key=m.queue(bounded,largeCapture,'muse',null,'','');m.accept(bounded,{request_id:key,status:'handed_off'});assert(!bounded.captures[key].image);assert(bounded.captures[key].source);}
-assert(JSON.stringify(bounded).length<30000);assert(!JSON.stringify(bounded.events).includes(largeCapture.image.data_base64));
-console.log('Accepted captures release local base64 while retaining source identity');
+const boundedJson=JSON.stringify(bounded);
+assert.strictEqual(bounded.last_capture,largeCapture);assert.equal(boundedJson.split(largeCapture.image.data_base64).length-1,1);
+assert(!JSON.stringify(bounded.events).includes(largeCapture.image.data_base64));
+console.log('Accepted captures release per-submission base64 while retaining one reusable capture');
+
+const full=m.fresh(),previousCapture={source:{page_id:'previous'},image:capture.image};
+full.last_capture=previousCapture;full.events=[{text:'x'.repeat(24*1024*1024)}];
+assert.throws(()=>m.queue(full,capture,'muse',null,'',''),/Local storage limit/);
+assert.strictEqual(full.last_capture,previousCapture);assert.equal(full.outbox.length,0);
+console.log('A failed enqueue leaves the previous reusable capture and draft state untouched');
 
 const receiveCode=qml.slice(qml.indexOf('    function outboxItem('),qml.indexOf('    GoodBot.Endpoint {'));
 const sent=[],ctx={vaultSavePending:false,Model:m,state:m.fresh(),activeItemId:'pending-id',syncing:true,saving:false,dirty:false,loaded:true,
@@ -72,6 +89,7 @@ assert.equal(accepted.length,1);assert.equal(accepted[0].content.text,'Hello Mus
 assert.equal(m.submissionStatus(accepted[0]),'Dispatch uncertain');assert.strictEqual(legacy.draft,legacyDraft);
 assert(!qml.includes('New chat'));assert(!qml.includes('Reply to this conversation'));
 assert(qml.includes('model: ["Queued"'));assert(qml.includes('"History"'));
+assert(qml.includes('visible: root.hasActiveDraft; onClicked: resumeDraft()'));
 console.log('Legacy source-free submissions remain readable in Queued/History while chat creation is absent');
 
 const encoded={image:capture.image,sha256:'a'.repeat(64)};
@@ -128,16 +146,16 @@ console.log('Accepted capture history exposes source and exact processing stage 
 
 {
 const sessionQml=fs.readFileSync(__dirname+'/native/Session.qml','utf8');
-let popupOpens=0,queueNotices=[],savedSnapshots=[];
+let popupOpens=0,queueNotices=[],savedSnapshots=[],inkClears=0;
 const directClient={Model:m,state:m.fresh(),loaded:true,restoring:false,saving:false,dirty:false,syncing:false,
     vaultSavePending:false,closeAfterSave:false,wanted:false,activeItemId:'',notice:'',pane:'compose',capture:oldDraft.capture,
-    messageText:'keep',sourcePreview:'',unrestoredInk:'',converted:{text:''},destination:{currentIndex:0},
-    ink:{hasInk:false,clear:()=>{}},draftSave:{restart:()=>{}},queuedList:{model:[]},historyList:{model:[]},
+    messageText:'keep',sourcePreview:'',unrestoredInk:'',converted:{text:''},destination:{currentIndex:0,currentText:'Hermes'},
+    ink:{hasInk:false,clear:()=>inkClears++},draftSave:{restart:()=>{}},queuedList:{model:[]},historyList:{model:[]},
     queuedCount:0,historyCount:0,selectedSubmissionId:'',selectedSubmission:null,selectedQueued:false,Qt:{callLater:f=>f()},
     nativeEndpoint:{encodeImage:()=>encoded},persist:()=>{directClient.saving=true;directClient.dirty=false;savedSnapshots.push(JSON.stringify(directClient.state));},
-    setMessageText:v=>directClient.messageText=v,unsavedClose:{visible:false}};
+    setMessageText:v=>{directClient.messageText=v;if(directClient.loaded)directClient.draft();},dismissKeyboard:()=>{},unsavedClose:{visible:false}};
 directClient.state.draft=oldDraft;
-Object.defineProperty(directClient,'hasActiveDraft',{get:()=>directClient.state.draft!==null||directClient.capture!==null});
+Object.defineProperty(directClient,'hasActiveDraft',{get:()=>directClient.state.draft!==null});
 const directSession={Model:m,capturingPage:false,vaultStatus:msg=>queueNotices.push(msg),panel:{client:directClient,showPopup:()=>popupOpens++},console:{log:()=>{}}};
 directClient.GoodBot={Session:directSession};vm.createContext(directClient);vm.runInContext(receiveCode,directClient);vm.runInContext(draftCode,directClient);
 vm.createContext(directSession);vm.runInContext(sessionQml.slice(sessionQml.indexOf('    function openInbox('),sessionQml.lastIndexOf('\n}')),directSession);
@@ -150,10 +168,26 @@ assert.equal(JSON.parse(savedSnapshots[0]).draft.comment,'keep');assert.equal(qu
 directClient.receive(1,'');assert.equal(queueNotices.at(-1),'Queued locally for vault');
 assert.equal(directClient.outboxStatus(directClient.state.outbox[0]),'Queued for vault; awaiting relay receipt');
 directSession.openSend({});assert.equal(popupOpens,1);assert.equal(directClient.pane,'compose');
+assert.equal(JSON.stringify(directClient.state.draft),preservedDraft);assert.equal(directClient.destination.currentIndex,0);
 directClient.capture=null;directClient.state.draft=null;directClient.pane='queued';
 directSession.capture({},'book','page','Ideas','2',rect,bounds,'');
 assert.equal(popupOpens,2);assert.equal(directClient.pane,'compose');assert.equal(directClient.capture.source.selection,'crop');
-console.log('Direct vault queue bypasses composer and preserves the active capture draft; Send to agent still opens capture compose');
+assert.equal(directClient.destination.currentIndex,1);
+const clearsBeforeSend=inkClears;
+directClient.destination.currentText='Muse';directClient.submit(false);
+const firstSendId=directClient.state.outbox.at(-1).payload.request_id;
+assert.strictEqual(directClient.capture,directClient.state.last_capture);assert.equal(directClient.state.draft,null);
+assert.equal(inkClears,clearsBeforeSend+1);
+assert.equal(directClient.draft(),true);assert.equal(directClient.state.draft,null);
+directClient.pane='history';directSession.capture({},'book','page','Ideas','2',{...rect,x:40},bounds,'');
+assert.equal(directClient.pane,'compose');assert.equal(directClient.destination.currentIndex,1);
+assert.equal(directClient.capture.source.crop.x,0.15);
+directClient.destination.currentText='Muse';directClient.submit(false);
+assert.notEqual(directClient.state.outbox.at(-1).payload.request_id,firstSendId);
+const provider={goodbotCapturePage:complete=>complete({},'book','page','Ideas','2',rect,bounds)};
+directClient.pane='queued';directSession.openSend(provider);
+assert.equal(directClient.pane,'compose');assert.equal(directClient.destination.currentIndex,1);
+console.log('Direct and Share lasso actions reopen a fresh Muse composer; resends get fresh IDs while retries retain theirs');
 }
 
 const metadataState=m.fresh(),submitted='2026-10-20T03:15:00Z',received='2026-10-20T03:16:00Z';

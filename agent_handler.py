@@ -203,7 +203,9 @@ def build_prompt(envelope, config_dir):
             "needs_review. Finish with a concise processing result naming any verified output paths.\n\n" + base
         )
     elif destination == "hermes":
-        base = "Act as the household Hermes agent for this bounded notebook submission.\n\n" + base
+        base = ("Act as the household Hermes agent for this bounded notebook submission. "
+                "Return the response here; the worker delivers it through the configured Discord sender. "
+                "Do not independently send or forward this response.\n\n" + base)
     else:
         base = (
             "Act as Codex in read-only analysis mode. Do not edit files, run mutating commands, or claim a "
@@ -352,7 +354,48 @@ def codex_turn(envelope, job_dir, config_dir, runner=subprocess.run):
     return answer, "codex"
 
 
-def run_job(job_dir, config_dir, opener=None, agent_runner=subprocess.run):
+def deliver_hermes_answer(job_dir, config_dir, envelope, answer, runner=subprocess.run):
+    directory = Path(config_dir) / "hermes"
+    target_file = directory / "discord_target"
+    if not target_file.exists():
+        checkpoint(job_dir, "completed", actor="hermes", result_saved=True,
+                   tablet_reply=False, normal_channel_delivery="not_configured")
+        return 0
+    try:
+        target = config_text(target_file)
+        sender = Path(config_text(directory / "discord_sender")).expanduser().resolve()
+        if not re.fullmatch(r"(?:channel|user):[0-9]{15,22}", target) or not sender.is_file():
+            raise HandlerError("invalid configured Discord delivery route")
+    except (OSError, UnicodeError, HandlerError):
+        checkpoint(job_dir, "answer_received", actor="hermes", result_saved=True,
+                   tablet_reply=False, normal_channel_delivery="configuration_error", needs_review=True)
+        return 1
+    # Persist before dispatch: an uncertain external send must never be auto-replayed.
+    checkpoint(job_dir, "discord_dispatching", actor="hermes", result_saved=True,
+               tablet_reply=False, normal_channel_delivery="uncertain")
+    heading = "**Hermes · notebook submission**\nRequest: " + envelope["message_id"] + "\n\n"
+    command = [sys.executable, str(sender), "--target", target, "--message"]
+    if len(heading + answer) <= 1800:
+        command.append(heading + answer.replace("@", "@\u200b"))
+    else:
+        command.extend((heading + "Response attached.", "--media", str(job_dir / "answer.txt")))
+    command.append("--json")
+    try:
+        result = runner(command, capture_output=True, text=True, timeout=60)
+        receipt = json.loads(result.stdout)
+        if (result.returncode or not isinstance(receipt, dict) or not receipt.get("ok") or receipt.get("simulated")
+                or not re.fullmatch(r"[0-9]{15,22}", str(receipt.get("message_id", "")))):
+            raise HandlerError("Discord delivery was not verified")
+    except (OSError, subprocess.TimeoutExpired, ValueError, HandlerError):
+        checkpoint(job_dir, "discord_uncertain", actor="hermes", result_saved=True,
+                   tablet_reply=False, normal_channel_delivery="uncertain", needs_review=True)
+        return 1
+    checkpoint(job_dir, "completed", actor="hermes", result_saved=True, tablet_reply=False,
+               normal_channel_delivery="discord_sent", discord_message_id=receipt["message_id"])
+    return 0
+
+
+def run_job(job_dir, config_dir, opener=None, agent_runner=subprocess.run, sender_runner=subprocess.run):
     job_dir = private_directory(job_dir)
     config_dir = private_directory(config_dir)
     envelope = validate_envelope(json.loads((job_dir / "input.json").read_text(encoding="utf-8")))
@@ -364,6 +407,12 @@ def run_job(job_dir, config_dir, opener=None, agent_runner=subprocess.run):
         except BlockingIOError:
             return 1
         status = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+        if (envelope["destination"] == "hermes"
+                and (status.get("state") == "answer_received"
+                     or (status.get("state") == "completed"
+                         and status.get("normal_channel_delivery") in ("not_verified", "not_configured")))):
+            return deliver_hermes_answer(job_dir, config_dir, envelope,
+                (job_dir / "answer.txt").read_text(encoding="utf-8"), sender_runner)
         if status.get("state") == "completed":
             return 0
         if status.get("state") != "queued":
@@ -393,6 +442,8 @@ def run_job(job_dir, config_dir, opener=None, agent_runner=subprocess.run):
             except (OSError, UnicodeError, ValueError, json.JSONDecodeError, HandlerError) as error:
                 checkpoint(job_dir, "agent_uncertain", error=type(error).__name__, preserved=True)
                 return 1
+            if actor == "hermes" and envelope["destination"] == "hermes":
+                return deliver_hermes_answer(job_dir, config_dir, envelope, answer, sender_runner)
             checkpoint(job_dir, "completed", actor=actor, result_saved=True,
                        tablet_reply=False, normal_channel_delivery="not_verified")
             return 0

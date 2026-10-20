@@ -10,6 +10,9 @@ Send to agent and Send to vault, plus Agent submissions below Share in the paren
 menu. There is no floating button or live chat. Queued contains unsent work;
 History contains relay-accepted submissions and their actual processing status.
 Agent responses belong in their established normal channels.
+Fresh agent captures default to Muse; restored unsent drafts keep their recipient.
+After sending, the native lasso remains available for another intentional send.
+New sends get new IDs; retries keep their original ID and payload.
 Vault queue notices report local persistence and awaiting a relay receipt;
 queueing alone does not establish either disconnection or completed processing.
 Queued and History cards include the source document/page and submission time;
@@ -46,6 +49,14 @@ authenticated loopback configuration `hermes/{url,token,routing}`; inherited rou
 may use cloud providers and is not a local-only vault route. Codex configuration
 is `codex/{bin,workspace}`. A normal response channel must already be configured
 and authorized in the receiving agent; the bridge does not invent a destination.
+For Hermes replies, optionally configure owner-only `hermes/discord_target`
+(`channel:<id>` or `user:<id>`) and `hermes/discord_sender` (absolute path to your
+existing Python sender). The sender accepts `--target`, `--message`, optional
+`--media`, and `--json`, returning `ok` and a Discord `message_id`. Long answers
+are attached as text files. The worker saves the response before sending and
+records a verified receipt; uncertain sends require manual reconciliation and
+are never automatically retried. Missing configuration preserves the answer
+without claiming Discord delivery. The model must not send its own duplicate.
 
 The shell client uses private `url`/`token` files via `REMARKABLE_CONFIG_DIR`:
 

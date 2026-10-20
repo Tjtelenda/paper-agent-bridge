@@ -1,9 +1,10 @@
 // Pure shared model: executable by QML and the host Node regression test.
-function fresh() { return {version:1,cursor:0,outbox:[],events:[],captures:{},draft:null}; }
+function fresh() { return {version:1,cursor:0,outbox:[],events:[],captures:{},draft:null,last_capture:null}; }
 function restore(value) {
     if (!value || Object.keys(value).length === 0) return fresh();
     if (value.version !== 1 || !Array.isArray(value.outbox) || !Array.isArray(value.events)
             || typeof value.cursor !== 'number' || !value.captures) throw Error('Unsupported saved state; preserved on disk');
+    if(value.last_capture===undefined)value.last_capture=null;
     return value;
 }
 function uid() { return 'rm-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12); }
@@ -69,10 +70,11 @@ function reject(state, id, reason) {
 function enqueue(state, item, capture, keepDraft) {
     var captures={};Object.keys(state.captures).forEach(function(k){captures[k]=state.captures[k];});
     if(capture)captures[item.id]=capture;
-    var next={version:state.version,cursor:state.cursor,outbox:state.outbox.concat([item]),events:state.events,captures:captures,draft:keepDraft?state.draft:null};
+    var next={version:state.version,cursor:state.cursor,outbox:state.outbox.concat([item]),events:state.events,
+        captures:captures,draft:keepDraft?state.draft:null,last_capture:keepDraft?(state.last_capture||null):capture};
     if(unescape(encodeURIComponent(JSON.stringify(next))).length>24*1024*1024)
         throw Error('Local storage limit reached; draft preserved. Export/archive state before adding captures');
-    state.outbox=next.outbox;state.captures=captures;state.draft=next.draft;
+    state.outbox=next.outbox;state.captures=captures;state.draft=next.draft;state.last_capture=next.last_capture;
     return item.id;
 }
 function queue(state, capture, destination, converted, comment, ink, keepDraft) {

@@ -171,9 +171,57 @@ class AgentHandlerTests(unittest.TestCase):
         self.assertEqual((job / "answer.txt").read_text(), "Hermes answer")
         status = json.loads((job / "status.json").read_text())
         self.assertFalse(status["tablet_reply"])
-        self.assertEqual(status["normal_channel_delivery"], "not_verified")
+        self.assertEqual(status["normal_channel_delivery"], "not_configured")
         self.assertIn("There is no on-device chat", requests[1][1]["message"])
         self.assertEqual(run_job(job, self.config, opener=lambda *_args: self.fail()), 0)
+
+    def test_discord_delivery_of_saved_answer_never_replays_agent_or_send(self):
+        job, _, _ = self.accepted_job(self.base)
+        (job / "answer.txt").write_text("Saved answer @everyone")
+        (job / "status.json").write_text(json.dumps({"state": "completed",
+            "normal_channel_delivery": "not_verified"}))
+        (self.config / "hermes" / "discord_target").write_text("channel:123456789012345678")
+        sender = self.root / "sender.py"
+        sender.write_text("# sender")
+        (self.config / "hermes" / "discord_sender").write_text(str(sender))
+        calls = []
+
+        def send(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, json.dumps({
+                "ok": True, "message_id": "987654321098765432"}))
+
+        # A saved answer before Discord dispatch is recoverable without rerunning Hermes.
+        (job / "status.json").write_text(json.dumps({"state": "answer_received", "actor": "hermes"}))
+        (self.config / "hermes" / "discord_sender").write_text(str(self.root / "missing.py"))
+        self.assertEqual(run_job(job, self.config, opener=lambda *_: self.fail(), sender_runner=send), 1)
+        self.assertEqual(calls, [])
+        self.assertEqual(json.loads((job / "status.json").read_text())["state"], "answer_received")
+        (self.config / "hermes" / "discord_sender").write_text(str(sender))
+        self.assertEqual(run_job(job, self.config, opener=lambda *_: self.fail(), sender_runner=send), 0)
+        self.assertIn("Saved answer @\u200beveryone", calls[0][calls[0].index("--message") + 1])
+        self.assertEqual(json.loads((job / "status.json").read_text())["normal_channel_delivery"], "discord_sent")
+        self.assertEqual(run_job(job, self.config, sender_runner=lambda *_a, **_k: self.fail()), 0)
+        self.assertEqual(len(calls), 1)
+
+    def test_uncertain_discord_send_keeps_answer_without_replay(self):
+        job, _, _ = self.accepted_job(self.base)
+        (job / "answer.txt").write_text("x" * 3000)
+        (job / "status.json").write_text(json.dumps({"state": "completed",
+            "normal_channel_delivery": "not_verified"}))
+        (self.config / "hermes" / "discord_target").write_text("channel:123456789012345678")
+        sender = self.root / "sender.py"
+        sender.write_text("# sender")
+        (self.config / "hermes" / "discord_sender").write_text(str(sender))
+
+        def send(command, **kwargs):
+            self.assertEqual(command[command.index("--media") + 1], str(job / "answer.txt"))
+            raise subprocess.TimeoutExpired(command, 60)
+
+        self.assertEqual(run_job(job, self.config, sender_runner=send), 1)
+        self.assertEqual((job / "answer.txt").read_text(), "x" * 3000)
+        self.assertEqual(json.loads((job / "status.json").read_text())["state"], "discord_uncertain")
+        self.assertEqual(run_job(job, self.config, sender_runner=lambda *_a, **_k: self.fail()), 1)
 
     def test_obsidian_fails_closed_before_job_or_agent_dispatch(self):
         envelope = dict(self.base, destination="obsidian")
