@@ -80,6 +80,26 @@ QtObject {
                 if(['create_notebook','append_page','set_template'].indexOf(pending.operation)>=0)return false;
                 if(!Array.isArray(state.content.pages)||JSON.stringify(state.content.pages)!==JSON.stringify(item.pages))return false;
             }
+            if(item.document_tags!==undefined) {
+                if(!Array.isArray(state.content.tags)||!Array.isArray(state.content.pageTags))return false;
+                var validDocumentTags=true;
+                var savedDocumentTags=state.content.tags.map(function(tag){
+                    if(typeof tag==='string')return tag;
+                    if(!tag||typeof tag.name!=='string'||typeof tag.timestamp!=='number'||!isFinite(tag.timestamp)){validDocumentTags=false;return '';}
+                    return tag.name;
+                }).sort();
+                if(!validDocumentTags)return false;
+                if(JSON.stringify(savedDocumentTags)!==JSON.stringify(item.document_tags))return false;
+                var savedPageTags={};
+                for(var tagIndex=0;tagIndex<state.content.pageTags.length;tagIndex++) {
+                    var savedTag=state.content.pageTags[tagIndex];
+                    if(!savedTag||typeof savedTag.name!=='string'||typeof savedTag.pageId!=='string'||item.pages.indexOf(savedTag.pageId)<0)return false;
+                    if(!savedPageTags[savedTag.pageId])savedPageTags[savedTag.pageId]=[];
+                    savedPageTags[savedTag.pageId].push(savedTag.name);
+                }
+                Object.keys(savedPageTags).forEach(function(pageId){savedPageTags[pageId].sort();});
+                if(Logic.canonical(savedPageTags)!==Logic.canonical(item.page_tags))return false;
+            }
         }
         item.saved_metadata_sha256=state.metadata_sha256;
         if(state.content_sha256)item.saved_content_sha256=state.content_sha256;

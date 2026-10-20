@@ -22,7 +22,8 @@ namespace {
 constexpr int RequestLimit = 128 * 1024, ResponseLimit = 2 * 1024 * 1024;
 const QSet<QString> Operations = {"inspect", "list_templates", "create_notebook", "create_folder", "rename",
     "append_page", "set_template", "copy_pages", "move_pages", "delete_pages", "quick_sheet", "insert_text",
-    "trash", "restore", "delete_item", "list_folder", "move_item", "open_page", "insert_image", "create_from_pages", "copy_item", "request_status"};
+    "trash", "restore", "delete_item", "list_folder", "move_item", "open_page", "insert_image", "create_from_pages",
+    "copy_item", "list_tags", "add_tags", "remove_tags", "request_status"};
 QByteArray json(const QVariantMap &value) { return QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact); }
 QVariantMap receipt(const QString &id, const QString &operation, const QString &status, const QString &error) {
     return {{"request_id", id}, {"operation", operation}, {"status", status}, {"result", QVariantMap{{"error", error}}}};

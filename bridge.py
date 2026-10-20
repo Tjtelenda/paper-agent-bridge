@@ -35,7 +35,8 @@ CONTROL_LIMIT = 128 * 1024
 CONTROL_OPERATIONS = frozenset(("inspect", "list_templates", "list_folder", "create_notebook",
     "create_folder", "rename", "move_item", "append_page", "set_template", "copy_pages",
     "move_pages", "delete_pages", "quick_sheet", "insert_text", "insert_image", "trash",
-    "restore", "delete_item", "open_page", "create_from_pages", "copy_item", "request_status"))
+    "restore", "delete_item", "open_page", "create_from_pages", "copy_item", "list_tags",
+    "add_tags", "remove_tags", "request_status"))
 
 
 class InvalidPayload(ValueError):

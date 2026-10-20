@@ -73,6 +73,14 @@ class NativeRelayTests(unittest.TestCase):
             self.assertEqual(self.bridge.queue_control(dict(self.command, request_id=f'native_limit_{i:05d}'))[0], 201)
         self.assertEqual(self.bridge.queue_control(self.command)[0], 429)
 
+    def test_native_tag_commands_are_allowlisted_but_global_tag_edits_are_not(self):
+        for index, operation in enumerate(('list_tags', 'add_tags', 'remove_tags')):
+            command = dict(self.command, request_id=f'native_tag_{index:08d}', operation=operation)
+            self.assertEqual(self.bridge.queue_control(command)[0], 201)
+        for operation in ('rename_tag', 'delete_tag'):
+            command = dict(self.command, request_id='native_global_' + operation, operation=operation)
+            self.assertEqual(self.bridge.queue_control(command)[0], 400)
+
     def test_poll_wakes_and_receipts_must_match_dispatched_identity(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(self.bridge.next_control, 2)

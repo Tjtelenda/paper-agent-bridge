@@ -86,6 +86,11 @@ outbound connections; no public SSH is needed. An accepted queue request is not 
 completed edit. The paired-cloud helper remains available for library inspection
 and original archive downloads.
 
+Native tag commands list, add and remove document or exact-page tags. Mutations
+use a fresh tag-aware snapshot, preserve unrelated tags, and require saved tag
+read-back. Global tag rename/delete is unavailable; consult the operation map for
+current device qualification.
+
 ## Build and recovery
 
 Host backend tests need a C++17 compiler and libcurl development files. The native

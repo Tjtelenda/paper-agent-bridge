@@ -9,6 +9,21 @@ function keys(args, required, optional) {
 function identifier(value) { requireValue(typeof value==='string' && /^[A-Za-z0-9._:-]{1,160}$/.test(value), 'Invalid native identity');return value; }
 function name(value) { requireValue(typeof value==='string' && value.trim()===value && value.length>0 && value.length<=200 && !/[\x00-\x1f/\\]/.test(value) && value!=='.' && value!=='..', 'Invalid library name');return value; }
 function ids(doc) { var pages=[];for(var i=0;i<doc.pageCount;i++)pages.push(String(doc.idForPage(i)));return pages; }
+function tagNames(values) {
+    requireValue(Array.isArray(values)&&values.length>0&&values.length<=20,'Select 1–20 tags');
+    var seen=Object.create(null);return values.map(function(value){name(value);requireValue(!seen[value],'Duplicate tag');seen[value]=true;return value;});
+}
+function sortedTags(values) {return Array.prototype.map.call(values||[],function(value){return String(value);}).sort();}
+function tagSnapshot(doc) {
+    var byPage={},pageIds=ids(doc);
+    Array.prototype.forEach.call(doc.getPageTags(),function(tag){
+        var page=Number(tag.page),label=String(tag.name);
+        requireValue(Number.isInteger(page)&&page>=0&&page<pageIds.length&&label.length>0,'Unknown native page tag shape');
+        var pageId=pageIds[page];if(!byPage[pageId])byPage[pageId]=[];byPage[pageId].push(label);
+    });
+    Object.keys(byPage).forEach(function(pageId){byPage[pageId].sort();});
+    return {document_tags:sortedTags(doc.tags),page_tags:byPage};
+}
 function entry(c,id) { var e=c.library.entryForId(id===''?'':identifier(id));requireValue(e && String(e.id)===id, 'Native item not found');return e; }
 function document(c,id) {var e=entry(c,id);requireValue(e.type===c.documentType && !e.isTrashed && !e.archived && !e.isExporting && !e.isDownloading,'Notebook unavailable or busy');return e;}
 function snapshot(c,e) {
@@ -17,9 +32,15 @@ function snapshot(c,e) {
     else if(e.childIds!==undefined)result.children=Array.prototype.map.call(e.childIds,function(id){return String(id);});
     return result;
 }
+function taggedSnapshot(c,e) {var result=snapshot(c,e),tagged=tagSnapshot(e);result.document_tags=tagged.document_tags;result.page_tags=tagged.page_tags;return result;}
 function expected(c,a) {
     identifier(a.id);var e=entry(c,a.id),actual=snapshot(c,e);
     requireValue(a.expected && canonical(JSON.parse(JSON.stringify(actual)))===canonical(JSON.parse(JSON.stringify(a.expected))), 'Item changed; inspect again');
+    return e;
+}
+function expectedTags(c,a) {
+    identifier(a.id);var e=document(c,a.id),actual=taggedSnapshot(c,e);
+    requireValue(a.expected&&canonical(actual)===canonical(a.expected),'Item or tags changed; list tags again');
     return e;
 }
 function templateName(c,value) { requireValue(typeof value==='string' && c.templates().some(function(t){return t.filename===value;}), 'Template is not installed');return value; }
@@ -40,6 +61,21 @@ function prepare(c,op,a) {
     if(op==='inspect') {keys(a,[],['id']);var id=a.id||c.rootId();var inspected=snapshot(c,entry(c,id));if(id===''&&c.view&&c.view.document)inspected.active_editor={id:String(c.view.document.id),page_id:String(c.view.currentPageId)};return {immediate:inspected};}
     if(op==='list_templates') {keys(a,[],[]);return {immediate:{templates:c.templates().map(function(t){return {filename:String(t.filename),name:String(t.name),landscape:!!t.landscape};})}};}
     if(op==='list_folder') {keys(a,[],['id']);e=folder(c,a.id||c.rootId());return {immediate:{folder:snapshot(c,e),items:Array.prototype.map.call(e.childIds,function(id){return snapshot(c,entry(c,String(id)));})}};}
+    if(op==='list_tags') {
+        keys(a,['id'],[]);e=document(c,a.id);return {immediate:taggedSnapshot(c,e)};
+    }
+    if(op==='add_tags'||op==='remove_tags') {
+        keys(a,['id','expected','tags'],['page_id']);e=expectedTags(c,a);var changed=tagNames(a.tags),tagged=tagSnapshot(e),current;
+        if(a.page_id!==undefined){index=pages(e,[a.page_id])[0];current=(tagged.page_tags[a.page_id]||[]).slice();}
+        else current=tagged.document_tags.slice();
+        var desired=op==='add_tags'?current.concat(changed.filter(function(tag){return current.indexOf(tag)<0;})):current.filter(function(tag){return changed.indexOf(tag)<0;});
+        desired.sort();
+        if(canonical(current)!==canonical(desired)){if(a.page_id!==undefined)c.lc.setPageTags(a.id,[index],desired,[]);else c.lc.setEntryTags(a.id,desired,[]);}
+        return {poll:function(){var item=taggedSnapshot(c,e),actual=a.page_id!==undefined?(item.page_tags[a.page_id]||[]):item.document_tags;
+            if(a.page_id!==undefined){var oldPages=JSON.parse(JSON.stringify(tagged.page_tags)),newPages=JSON.parse(JSON.stringify(item.page_tags));delete oldPages[a.page_id];delete newPages[a.page_id];requireValue(canonical(item.document_tags)===canonical(tagged.document_tags)&&canonical(newPages)===canonical(oldPages),'Unrelated tags changed');}
+            else requireValue(canonical(item.page_tags)===canonical(tagged.page_tags),'Unrelated page tags changed');
+            return canonical(actual)===canonical(desired)?item:null;}};
+    }
     if(op==='create_folder'||op==='create_notebook') {
         keys(a,['parent_id','name'],op==='create_notebook'?['template','landscape','document_id','page_id']:[]);
         requireValue(a.parent_id===''||identifier(a.parent_id),'Invalid parent');name(a.name);unique(c,a.parent_id,a.name,'');

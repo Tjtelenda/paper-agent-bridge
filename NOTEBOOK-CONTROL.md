@@ -50,6 +50,8 @@ for a destination document. Page identities are stable UUIDs, never page numbers
 | `inspect` | Optional `id`; returns identity, name, parent, Trash state, ordered page IDs/templates, and active page/text length when applicable. Root also reports active editor. |
 | `list_folder` | Optional `id`; immediate children only. Walk relevant folders. |
 | `list_templates` | No arguments; installed filenames and orientation. |
+| `list_tags` | `id`; returns the complete item snapshot plus `document_tags` and `page_tags` keyed by stable page ID. Document tags are never reported as page tags. |
+| `add_tags` / `remove_tags` | `id,expected,tags`; `expected` is the fresh `list_tags` result. Optional `page_id` selects one exact page, otherwise the document. Preserves every unmentioned tag and verifies the saved `.content` state. |
 | `create_folder` | `parent_id,name`; collision refused. |
 | `create_notebook` | `parent_id,name`; optional installed `template,landscape`. Host adds stable `document_id,page_id`. Creates a writable native notebook. |
 | `quick_sheet` | No arguments; reuse empty last Quick sheets page or append. Never treats another notebook as Quick sheets. |
@@ -71,6 +73,13 @@ for a destination document. Page identities are stable UUIDs, never page numbers
 Never fabricate `confirmed` or a backup digest. Those fields are supplied only
 after an actual scoped backup. Operations absent from this table are unavailable;
 there is no arbitrary shell command or general script execution endpoint.
+
+Tag names must be explicit, contain no path/control characters and remain within
+the bounded request limits. These commands do not rename or delete a tag globally.
+For ordinary organization, use the small vocabulary `active`, `waiting`, `closed`,
+`interview`, `meeting`, `research`, `idea`, `follow-up`, and `review`. The first
+seven are document tags; `follow-up` and `review` are page tags only when the user
+identifies the exact page or its content has been deliberately reviewed.
 
 ## Away from home
 
@@ -111,7 +120,9 @@ folder deletion and raw notebook-file rewriting are not provided.
 Disposable on-tablet tests have verified native creation, folders, rename/move,
 page append/templates, page copy/reorder and cross-document moves, typed text, native images, whole
 notebook copies, creation from selected pages, Trash/restore and scoped permanent
-deletion against saved state. Quick sheets remains implemented without a separate
+deletion against saved state. Disposable document/page tag add and remove operations
+have also passed against saved state, including preservation of the other tag scope.
+Quick sheets remains implemented without a separate
 field test. Remaining acceptance results and exact firmware/build/deployment
 limits are maintained in the private device handoff. Host tests alone do not prove
 screen appearance, handwriting quality, cloud synchronization or battery cost.
