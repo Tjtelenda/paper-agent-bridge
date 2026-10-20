@@ -70,6 +70,12 @@ for a destination document. Page identities are stable UUIDs, never page numbers
 | `delete_pages` | `id,expected,page_ids`; permanent, backup/confirmation required, target must be closed, cannot delete every page. |
 | `delete_item` | `id,expected`; permanent, already in Trash, closed, document backup/confirmation required. No bulk deletion or empty Trash. |
 
+Image coordinates are native scene units, not necessarily physical display pixels.
+Insertion centers the image at `(x,y)`; qualify the page's scene size and scaling
+before composing full-page or long-page artwork. Native create pins its first page
+as the cover; read back the saved cover setting. Image placement does not make
+printed text editable or prove physical scrolling/handwriting acceptance.
+
 Never fabricate `confirmed` or a backup digest. Those fields are supplied only
 after an actual scoped backup. Operations absent from this table are unavailable;
 there is no arbitrary shell command or general script execution endpoint.
